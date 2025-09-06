@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Mic, MicOff, Phone, PhoneOff, MapPin, AlertTriangle } from 'lucide-react'
+import { useEmergencyCall } from '@/hooks/useEmergencyCall'
 
 interface LocationData {
   latitude: number
@@ -9,110 +10,26 @@ interface LocationData {
   address?: string
 }
 
-interface EmergencyData {
-  type: string
-  severity: string
-  description: string
-  casualties: number
-  location: LocationData | null
-}
-
 export default function EmergencyInterface() {
-  const [isRecording, setIsRecording] = useState(false)
-  const [isConnected, setIsConnected] = useState(false)
-  const [transcript, setTranscript] = useState('')
-  const [emergencyData, setEmergencyData] = useState<EmergencyData>({
-    type: '',
-    severity: '',
-    description: '',
-    casualties: 0,
-    location: null
-  })
-  const [status, setStatus] = useState('Click to start emergency report')
-  const [humanTakeover, setHumanTakeover] = useState(false)
+  const {
+    isConnected,
+    isRecording,
+    transcript,
+    emergencyData,
+    error,
+    startEmergencyCall,
+    sendTextMessage,
+    interrupt,
+    endCall
+  } = useEmergencyCall()
 
-  const audioRef = useRef<HTMLAudioElement>(null)
+  const [testMessage, setTestMessage] = useState('')
 
-  // Get user location on component mount
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setEmergencyData(prev => ({
-            ...prev,
-            location: {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude
-            }
-          }))
-        },
-        (error) => {
-          console.error('Error getting location:', error)
-        }
-      )
-    }
-  }, [])
-
-  const startEmergencyCall = async () => {
-    setIsConnected(true)
-    setStatus('Connecting to AI Emergency Agent...')
-    
-    // Simulate connection delay
-    setTimeout(() => {
-      setStatus('Connected - Please describe your emergency')
-      setIsRecording(true)
-    }, 2000)
-  }
-
-  const endCall = () => {
-    setIsConnected(false)
-    setIsRecording(false)
-    setStatus('Call ended')
-  }
-
-  const toggleRecording = () => {
-    setIsRecording(!isRecording)
-  }
-
-  // Simulate AI processing and data extraction
-  const simulateAIProcessing = () => {
-    const sampleData = {
-      type: 'MEDICAL',
-      severity: 'HIGH',
-      description: 'Chest pain, difficulty breathing',
-      casualties: 1,
-      location: emergencyData.location
-    }
-    setEmergencyData(sampleData)
-    setTranscript('I need help, I\'m having chest pain and trouble breathing...')
-    
-    // Simulate auto-escalation for critical situations
-    if (sampleData.severity === 'HIGH' || sampleData.severity === 'CRITICAL') {
-      setTimeout(() => {
-        setHumanTakeover(true)
-        setStatus('Critical situation detected - Connecting to human dispatcher...')
-      }, 5000)
-    }
-  }
-
-  const submitEmergencyReport = async () => {
-    try {
-      const response = await fetch('/api/emergency', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...emergencyData,
-          transcript,
-          autoEscalated: humanTakeover
-        })
-      })
-      
-      if (response.ok) {
-        setStatus('Emergency report submitted successfully')
-      }
-    } catch (error) {
-      console.error('Error submitting report:', error)
-      setStatus('Error submitting report')
+  // For demo: send a test message
+  const handleSendTestMessage = () => {
+    if (testMessage.trim()) {
+      sendTextMessage(testMessage)
+      setTestMessage('')
     }
   }
 
@@ -144,15 +61,15 @@ export default function EmergencyInterface() {
         </div>
 
         {/* Location Display */}
-        {emergencyData.location && (
+        {emergencyData?.location && (
           <div className="bg-blue-50 rounded-lg p-4 mb-6">
             <div className="flex items-center">
               <MapPin className="h-5 w-5 text-blue-500 mr-2" />
               <span className="font-semibold">Location Detected</span>
             </div>
             <p className="text-sm text-gray-600 mt-1">
-              Lat: {emergencyData.location.latitude.toFixed(6)}, 
-              Lng: {emergencyData.location.longitude.toFixed(6)}
+              Lat: {emergencyData?.latitude?.toFixed(6)},
+              Lng: {emergencyData?.longitude?.toFixed(6)}
             </p>
           </div>
         )}
@@ -170,23 +87,17 @@ export default function EmergencyInterface() {
               </button>
             ) : (
               <div className="space-y-4">
+                <div className="text-green-600 font-semibold flex items-center justify-center">
+                  <Mic className="h-5 w-5 mr-2" />
+                  Connected - AI is listening
+                </div>
+                
                 <button
-                  onClick={toggleRecording}
-                  className={`${
-                    isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-gray-500 hover:bg-gray-600'
-                  } text-white font-bold py-3 px-6 rounded-full flex items-center mx-auto`}
+                  onClick={interrupt}
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-full flex items-center mx-auto mr-2"
                 >
-                  {isRecording ? (
-                    <>
-                      <Mic className="h-5 w-5 mr-2" />
-                      Recording...
-                    </>
-                  ) : (
-                    <>
-                      <MicOff className="h-5 w-5 mr-2" />
-                      Tap to Speak
-                    </>
-                  )}
+                  <MicOff className="h-4 w-4 mr-2" />
+                  Stop AI Response
                 </button>
                 
                 <button
@@ -202,32 +113,32 @@ export default function EmergencyInterface() {
         </div>
 
         {/* Emergency Data Display */}
-        {emergencyData.type && (
+        {emergencyData?.type && (
           <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
             <h3 className="text-lg font-semibold mb-4">Emergency Details</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium text-gray-600">Type</label>
-                <p className="text-gray-900">{emergencyData.type}</p>
+                <p className="text-gray-900">{emergencyData?.type}</p>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-600">Severity</label>
                 <p className={`font-semibold ${
-                  emergencyData.severity === 'CRITICAL' ? 'text-red-600' :
-                  emergencyData.severity === 'HIGH' ? 'text-orange-600' :
-                  emergencyData.severity === 'MEDIUM' ? 'text-yellow-600' : 'text-green-600'
+                  emergencyData?.severity === 'CRITICAL' ? 'text-red-600' :
+                  emergencyData?.severity === 'HIGH' ? 'text-orange-600' :
+                  emergencyData?.severity === 'MEDIUM' ? 'text-yellow-600' : 'text-green-600'
                 }`}>
-                  {emergencyData.severity}
+                  {emergencyData?.severity}
                 </p>
               </div>
               <div className="col-span-2">
                 <label className="text-sm font-medium text-gray-600">Description</label>
-                <p className="text-gray-900">{emergencyData.description}</p>
+                <p className="text-gray-900">{emergencyData?.description}</p>
               </div>
-              {emergencyData.casualties > 0 && (
+              {(emergencyData?.casualties ?? 0) > 0 && (
                 <div>
                   <label className="text-sm font-medium text-gray-600">Casualties</label>
-                  <p className="text-gray-900">{emergencyData.casualties}</p>
+                  <p className="text-gray-900">{emergencyData?.casualties}</p>
                 </div>
               )}
             </div>
@@ -245,7 +156,7 @@ export default function EmergencyInterface() {
         )}
 
         {/* Human Takeover Alert */}
-        {humanTakeover && (
+        {emergencyData?.humanTakeover && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
             <div className="flex items-center">
               <AlertTriangle className="h-5 w-5 text-red-500 mr-2" />
@@ -260,18 +171,29 @@ export default function EmergencyInterface() {
         {/* Demo Controls */}
         <div className="bg-yellow-50 rounded-lg p-4 mb-6">
           <h4 className="font-semibold text-yellow-800 mb-2">Demo Controls</h4>
-          <div className="space-x-2">
+          <div className="space-y-2">
+            <div className="flex space-x-2">
+              <input
+                type="text"
+                value={testMessage}
+                onChange={(e) => setTestMessage(e.target.value)}
+                placeholder="Type a test message..."
+                className="flex-1 px-3 py-1 border rounded text-sm"
+                disabled={!isConnected}
+              />
+              <button
+                onClick={handleSendTestMessage}
+                disabled={!isConnected || !testMessage.trim()}
+                className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white px-3 py-1 rounded text-sm"
+              >
+                Send Text
+              </button>
+            </div>
             <button
-              onClick={simulateAIProcessing}
-              className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm"
+              onClick={() => console.log('Emergency report submitted')}
+              className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm"
             >
-              Simulate AI Processing
-            </button>
-            <button
-              onClick={submitEmergencyReport}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
-            >
-              Submit Report
+              Submit Report to Database
             </button>
           </div>
         </div>

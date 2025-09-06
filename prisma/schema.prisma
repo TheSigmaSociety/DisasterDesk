@@ -11,125 +11,82 @@ datasource db {
 }
 
 model EmergencyCall {
-  id          String   @id @default(cuid())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
   
-  // Call details
-  callerName     String?
-  callerPhone    String?
-  location       String
-  latitude       Float?
-  longitude      Float?
+  // Caller Information
+  callerName    String?
+  callerPhone   String?
   
-  // Emergency information
-  emergencyType  EmergencyType
-  severity       SeverityLevel
-  description    String
-  casualties     Int           @default(0)
-  transcript     String?
+  // Location Information
+  location      String
+  latitude      Float?
+  longitude     Float?
   
-  // AI agent information
-  aiConfidence   Float?
-  autoEscalated  Boolean       @default(false)
-  humanTakeover  Boolean       @default(false)
+  // Emergency Details
+  emergencyType String   // FIRE, MEDICAL, POLICE, ACCIDENT, NATURAL_DISASTER, HAZMAT, OTHER
+  severity      String   // LOW, MEDIUM, HIGH, CRITICAL
+  description   String
+  casualties    Int      @default(0)
   
-  // Status tracking
-  status         CallStatus    @default(PENDING)
-  priority       Priority      @default(MEDIUM)
+  // Call Processing
+  transcript    String?
+  aiConfidence  Float?
+  autoEscalated Boolean  @default(false)
+  humanTakeover Boolean  @default(false)
   
-  // Resource assignment
-  resources      ResourceAssignment[]
+  // Status and Priority
+  status        String   @default("PENDING") // PENDING, IN_PROGRESS, DISPATCHED, RESOLVED, CANCELLED
+  priority      String   @default("MEDIUM")  // LOW, MEDIUM, HIGH, CRITICAL
+  
+  // Resources
+  resources     ResourceAssignment[]
   
   @@map("emergency_calls")
 }
 
-model ResourceAssignment {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  callId     String
-  call       EmergencyCall @relation(fields: [callId], references: [id], onDelete: Cascade)
-  
-  resourceId String
-  resource   Resource      @relation(fields: [resourceId], references: [id], onDelete: Cascade)
-  
-  assignedAt DateTime @default(now())
-  status     AssignmentStatus @default(ASSIGNED)
-  
-  @@map("resource_assignments")
-}
-
 model Resource {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
   
-  type        ResourceType
-  identifier  String       // e.g., "Fire Truck 101", "Ambulance 5"
-  status      ResourceStatus @default(AVAILABLE)
-  location    String?
-  latitude    Float?
-  longitude   Float?
+  // Resource Details
+  type        String   // FIRE_TRUCK, AMBULANCE, POLICE_CAR, HAZMAT_UNIT, RESCUE_UNIT, HELICOPTER
+  identifier  String   @unique // Unit number or call sign
+  status      String   @default("AVAILABLE") // AVAILABLE, DISPATCHED, BUSY, OUT_OF_SERVICE
   
+  // Location
+  currentLat  Float?
+  currentLng  Float?
+  station     String?
+  
+  // Assignments
   assignments ResourceAssignment[]
   
   @@map("resources")
 }
 
-enum EmergencyType {
-  FIRE
-  MEDICAL
-  POLICE
-  ACCIDENT
-  NATURAL_DISASTER
-  HAZMAT
-  OTHER
-}
-
-enum SeverityLevel {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
-}
-
-enum CallStatus {
-  PENDING
-  IN_PROGRESS
-  DISPATCHED
-  RESOLVED
-  CANCELLED
-}
-
-enum Priority {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
-}
-
-enum ResourceType {
-  FIRE_TRUCK
-  AMBULANCE
-  POLICE_CAR
-  HAZMAT_UNIT
-  RESCUE_UNIT
-  HELICOPTER
-}
-
-enum ResourceStatus {
-  AVAILABLE
-  DISPATCHED
-  BUSY
-  OUT_OF_SERVICE
-}
-
-enum AssignmentStatus {
-  ASSIGNED
-  EN_ROUTE
-  ON_SCENE
-  COMPLETED
-  CANCELLED
+model ResourceAssignment {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relationships
+  callId        String
+  call          EmergencyCall @relation(fields: [callId], references: [id], onDelete: Cascade)
+  resourceId    String
+  resource      Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  
+  // Assignment Details
+  status        String   @default("ASSIGNED") // ASSIGNED, EN_ROUTE, ON_SCENE, COMPLETED, CANCELLED
+  assignedAt    DateTime @default(now())
+  dispatchedAt  DateTime?
+  arrivedAt     DateTime?
+  completedAt   DateTime?
+  
+  // Estimated times
+  etaMinutes    Int?
+  
+  @@map("resource_assignments")
 }
