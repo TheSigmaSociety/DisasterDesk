@@ -1,0 +1,135 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model EmergencyCall {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Call details
+  callerName     String?
+  callerPhone    String?
+  location       String
+  latitude       Float?
+  longitude      Float?
+  
+  // Emergency information
+  emergencyType  EmergencyType
+  severity       SeverityLevel
+  description    String
+  casualties     Int           @default(0)
+  transcript     String?
+  
+  // AI agent information
+  aiConfidence   Float?
+  autoEscalated  Boolean       @default(false)
+  humanTakeover  Boolean       @default(false)
+  
+  // Status tracking
+  status         CallStatus    @default(PENDING)
+  priority       Priority      @default(MEDIUM)
+  
+  // Resource assignment
+  resources      ResourceAssignment[]
+  
+  @@map("emergency_calls")
+}
+
+model ResourceAssignment {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  callId     String
+  call       EmergencyCall @relation(fields: [callId], references: [id], onDelete: Cascade)
+  
+  resourceId String
+  resource   Resource      @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  
+  assignedAt DateTime @default(now())
+  status     AssignmentStatus @default(ASSIGNED)
+  
+  @@map("resource_assignments")
+}
+
+model Resource {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  type        ResourceType
+  identifier  String       // e.g., "Fire Truck 101", "Ambulance 5"
+  status      ResourceStatus @default(AVAILABLE)
+  location    String?
+  latitude    Float?
+  longitude   Float?
+  
+  assignments ResourceAssignment[]
+  
+  @@map("resources")
+}
+
+enum EmergencyType {
+  FIRE
+  MEDICAL
+  POLICE
+  ACCIDENT
+  NATURAL_DISASTER
+  HAZMAT
+  OTHER
+}
+
+enum SeverityLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum CallStatus {
+  PENDING
+  IN_PROGRESS
+  DISPATCHED
+  RESOLVED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ResourceType {
+  FIRE_TRUCK
+  AMBULANCE
+  POLICE_CAR
+  HAZMAT_UNIT
+  RESCUE_UNIT
+  HELICOPTER
+}
+
+enum ResourceStatus {
+  AVAILABLE
+  DISPATCHED
+  BUSY
+  OUT_OF_SERVICE
+}
+
+enum AssignmentStatus {
+  ASSIGNED
+  EN_ROUTE
+  ON_SCENE
+  COMPLETED
+  CANCELLED
+}
