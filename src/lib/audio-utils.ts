@@ -31,7 +31,6 @@ export class AudioRecorder {
 
 
     this.mediaRecorder.ondataavailable = (event) => {
-      console.log('🎵 Audio data available:', event.data.size, 'bytes')
       if (event.data.size > 0) {
         this.audioChunks.push(event.data)
         
@@ -81,7 +80,6 @@ export class AudioPlayer {
   private gainNode: GainNode | null = null
 
   async initialize(): Promise<void> {
-    console.log('🔊 AudioPlayer: Initializing Web Audio API...')
     this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
     this.gainNode = this.audioContext.createGain()
     this.gainNode.connect(this.audioContext.destination)

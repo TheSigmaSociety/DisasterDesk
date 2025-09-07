@@ -27,13 +27,11 @@ export function useEmergencyCall() {
   const [session, setSession] = useState<any>(null)
 
   const startEmergencyCall = useCallback(async () => {
-    console.log('🚀 Starting emergency call...')
     setError(null)
     setIsConnected(false)
 
     try {
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY
-      console.log("API KEY: " + apiKey) 
       if (!apiKey) { 
         throw new Error('Gemini API key not found')
       }
@@ -42,7 +40,6 @@ export function useEmergencyCall() {
       
       const callSession = await agent.startSession(
         (data: EmergencyData) => {
-          console.log('🔔 Emergency data received:', data)
           setEmergencyData({
             type: data.type,
             severity: data.severity,
@@ -54,15 +51,12 @@ export function useEmergencyCall() {
           })
         },
         (transcriptUpdate: string) => {
-          console.log('📝 Transcript update:', transcriptUpdate)
           setTranscript(transcriptUpdate)
         },
         (errorMessage: string) => {
-          console.log('⚠️ Speech recognition issue:', errorMessage)
           setSpeechError(errorMessage)
         },
         async (audioData: ArrayBuffer) => {
-          console.log('🎵 Audio response received from TTS')
           setIsAIResponding(true)
           
           // Play the audio response
@@ -78,7 +72,6 @@ export function useEmergencyCall() {
       setSession(callSession)
       setIsConnected(true)
       setIsRecording(true)
-      console.log('✅ Emergency call session started')
 
     } catch (error) {
       console.error('❌ Failed to start emergency call:', error)
@@ -88,18 +81,15 @@ export function useEmergencyCall() {
 
   const sendTextMessage = useCallback((message: string) => {
     if (session) {
-      console.log('💬 Sending text message:', message)
       session.sendMessage(message)
     }
   }, [session])
 
   const interrupt = useCallback(() => {
-    console.log('⚠️ Interrupting current response')
     // Implementation would depend on actual session
   }, [])
 
   const endCall = useCallback(async () => {
-    console.log('📞 Ending emergency call...')
     if (session) {
       session.disconnect()
     }

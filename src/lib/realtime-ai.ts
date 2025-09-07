@@ -57,7 +57,6 @@ export class EmergencyRealtimeAgent {
     // Gemini 2.5 Flash Preview TTS for speech synthesis
     this.ttsAI = new GoogleGenAI({ apiKey })
     
-    console.log('🤖 Emergency AI Agent initialized with Gemini 2.5 Flash Lite + 2.5 Flash Preview TTS')
     this.initializeSpeechRecognition()
     this.initializeAudioContext()
   }
@@ -65,7 +64,6 @@ export class EmergencyRealtimeAgent {
   private initializeAudioContext() {
     if (typeof window !== 'undefined') {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-      console.log('🔊 Audio context initialized for TTS output')
     }
   }
 
@@ -76,9 +74,7 @@ export class EmergencyRealtimeAgent {
       this.recognition.continuous = true
       this.recognition.interimResults = true
       this.recognition.lang = 'en-US'
-      console.log('🎤 Speech recognition initialized')
     } else {
-      console.warn('⚠️ Speech recognition not supported in this browser')
     }
   }
 
@@ -91,12 +87,11 @@ export class EmergencyRealtimeAgent {
     this.isGeolocationAttempted = true
 
     if (!navigator.geolocation) {
-      console.warn('⚠️ Geolocation is not supported by this browser')
+      console.warn('Geolocation is not supported by this browser')
       return null
     }
 
     try {
-      console.log('📍 Attempting to get user location...')
       
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(
@@ -116,18 +111,16 @@ export class EmergencyRealtimeAgent {
         accuracy: position.coords.accuracy
       }
 
-      console.log('✅ User location obtained:', this.userLocation)
       return this.userLocation
 
     } catch (error: any) {
-      console.warn('⚠️ Failed to get user location:', error.message)
       
       if (error.code === error.PERMISSION_DENIED) {
-        console.log('📍 Geolocation permission denied by user')
+        console.log(' Geolocation permission denied by user')
       } else if (error.code === error.POSITION_UNAVAILABLE) {
-        console.log('📍 Geolocation position unavailable')
+        console.log(' Geolocation position unavailable')
       } else if (error.code === error.TIMEOUT) {
-        console.log('📍 Geolocation request timed out')
+        console.log(' Geolocation request timed out')
       }
 
       return null
@@ -140,7 +133,6 @@ export class EmergencyRealtimeAgent {
     onError?: (error: string) => void,
     onAudioReceived?: (audioData: ArrayBuffer) => void
   ) {
-    console.log('🚀 Starting emergency call session...')
     
     // Create a session for emergency call processing with conversation history
     const sessionId = 'session-' + Date.now()
@@ -165,7 +157,6 @@ export class EmergencyRealtimeAgent {
       // Play opening 911 greeting immediately
       if (onAudioReceived) {
         const openingGreeting = "Hello this is 911, what's your emergency?"
-        console.log('📞 Playing opening 911 greeting')
         
         // Add opening greeting to conversation history
         this.currentSession.conversationHistory.push({
@@ -185,7 +176,6 @@ export class EmergencyRealtimeAgent {
         onError('Speech recognition not available in this browser. You can still use the text input below.')
       }
     } catch (error) {
-      console.error('❌ Failed to initialize session:', error)
       if (onError) {
         onError('Failed to start session. Using fallback mode.')
       }
@@ -195,12 +185,10 @@ export class EmergencyRealtimeAgent {
       id: sessionId,
       status: 'connected' as const,
       disconnect: () => {
-        console.log('📞 Emergency call session disconnected')
         this.stopSpeechRecognition()
         this.currentSession = null
       },
       sendMessage: async (text: string) => {
-        console.log('💬 Processing message:', text)
         if (onTranscriptUpdate) {
           onTranscriptUpdate(text)
         }
@@ -227,7 +215,6 @@ export class EmergencyRealtimeAgent {
     onAudioReceived?: (audioData: ArrayBuffer) => void
   ) {
     if (!this.recognition) {
-      console.warn('⚠️ Speech recognition not available')
       if (onError) {
         onError('Speech recognition not supported in this browser')
       }
@@ -243,7 +230,6 @@ export class EmergencyRealtimeAgent {
         const transcript = event.results[i][0].transcript
         if (event.results[i].isFinal) {
           finalTranscript += transcript + ' '
-          console.log('🎤 Final transcript chunk:', transcript)
           
           // Add caller message to conversation history
           if (this.currentSession) {
@@ -273,31 +259,25 @@ export class EmergencyRealtimeAgent {
       
       // Update with interim results for real-time display
       if (interimTranscript) {
-        console.log('🎤 Interim transcript:', interimTranscript)
         onTranscriptUpdate((finalTranscript+interimTranscript).trim())
       }
     }
 
     this.recognition.onerror = (event: any) => {
-      console.error('❌ Speech recognition error:', event.error)
       
       if (event.error === 'network') {
-        console.log('🌐 Network error detected')
         if (onError) {
           onError('Network connection issue. Speech recognition stopped. You can use the text input below.')
         }
         this.isListening = false
       } else if (event.error === 'not-allowed') {
-        console.error('❌ Microphone access denied')
         this.isListening = false
         if (onError) {
           onError('Microphone access denied. Please allow microphone access or use the text input below.')
         }
       } else if (event.error === 'no-speech') {
-        console.log('⏸️ No speech detected, continuing to listen...')
         // Don't stop listening for no-speech errors
       } else {
-        console.log('❌ Speech recognition error:', event.error)
         if (onError) {
           onError(`Speech recognition error: ${event.error}. Please use the text input below.`)
         }
@@ -307,13 +287,11 @@ export class EmergencyRealtimeAgent {
 
     this.recognition.onend = () => {
       if (this.isListening) {
-        console.log('🔄 Speech recognition ended, restarting...')
         setTimeout(() => {
           if (this.isListening) {
             try {
               this.recognition.start()
             } catch (error) {
-              console.error('❌ Failed to restart speech recognition:', error)
             }
           }
         }, 100)
@@ -322,14 +300,12 @@ export class EmergencyRealtimeAgent {
 
     this.isListening = true
     this.recognition.start()
-    console.log('🎤 Speech recognition started')
   }
 
   private stopSpeechRecognition() {
     if (this.recognition && this.isListening) {
       this.isListening = false
       this.recognition.stop()
-      console.log('🛑 Speech recognition stopped')
     }
   }
 
@@ -339,7 +315,6 @@ export class EmergencyRealtimeAgent {
     onAudioReceived?: (audioData: ArrayBuffer) => void
   ) {
     if (!this.currentSession) {
-      console.warn('⚠️ No active session for processing text')
       return
     }
 
