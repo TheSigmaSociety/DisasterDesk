@@ -45,6 +45,7 @@ export class EmergencyRealtimeAgent {
   private currentSession: EmergencySession | null = null
   private ttsQueue: Array<{ text: string; onAudioReceived: (audioData: ArrayBuffer) => void }> = []
   private isTTSProcessing: boolean = false
+  private emergencyCallId: string | null = null
 
   constructor(apiKey: string) {
     // Gemini 2.5 Flash Lite for data extraction and response generation
@@ -95,6 +96,9 @@ export class EmergencyRealtimeAgent {
       extractedData: null,
       lastProcessedAt: 0
     }
+    
+    // Reset emergency call ID for new session
+    this.emergencyCallId = null
     
     try {
       // Play opening 911 greeting immediately
@@ -310,12 +314,14 @@ Please return EXACTLY this format (no additional text or markdown):
     "latitude": latitude if extractable from location,
     "longitude": longitude if extractable from location
   },
-  "dispatcherResponse": "Your professional response that acknowledges what the caller just said, references previous conversation if relevant, asks follow-up questions if needed, and maintains the natural flow of the emergency call conversation."
+  "dispatcherResponse": "Your professional response that references previous conversation if relevant, asks follow-up questions if needed, and maintains the natural flow of the emergency call conversation."
 }
 
 IMPORTANT GUIDELINES:
-- Reference previous parts of the conversation when appropriate
 - Don't repeat questions you've already asked unless you need clarification
+- Time is of the essence. The response you give to the caller MUST be VERY SHORT and EFFICIENT. 
+- Do NOT repeat what the caller just said.
+- Keep your response in one (preferred) or two sentences MAXIMUM. 
 - Build upon information already gathered
 - If emergency data is already complete, focus on providing reassurance and instructions
 - If the caller is providing new information, acknowledge it and ask logical follow-up questions
@@ -351,9 +357,9 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
             console.log('🚨 Emergency data ' + (isNewData ? 'extracted' : 'updated') + ':', parsedResponse.emergencyData)
             this.currentSession.extractedData = parsedResponse.emergencyData
             onEmergencyDataExtracted(parsedResponse.emergencyData)
-            if (isNewData) {
-              await this.handleEmergencyInfo(parsedResponse.emergencyData)
-            }
+            
+            // Always update database when emergency data changes
+            await this.handleEmergencyInfo(parsedResponse.emergencyData, isNewData)
           }
         }
         
@@ -462,12 +468,14 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
       if (audioData) {
         const audioBuffer = Buffer.from(audioData, 'base64');
         console.log('🔊 TTS audio generated successfully, size:', audioBuffer.length, 'bytes')
+        console.log('✅ AI finished processing TTS for:', text.substring(0, 50) + (text.length > 50 ? '...' : ''))
         onAudioReceived(audioBuffer.buffer);
       } else {
         console.warn('⚠️ No audio data received from TTS model')
       }
     } catch (error) {
       console.error('❌ Error generating speech with TTS:', error)
+      console.log('❌ AI failed to process TTS for:', text.substring(0, 50) + (text.length > 50 ? '...' : ''))
     }
   }
 
@@ -483,6 +491,7 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
       return
     }
 
+    console.log('🔄 Starting TTS queue processing, items in queue:', this.ttsQueue.length)
     this.isTTSProcessing = true
 
     while (this.ttsQueue.length > 0) {
@@ -491,14 +500,26 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
     }
 
     this.isTTSProcessing = false
+    console.log('✅ TTS queue processing completed, queue is now empty')
   }
 
   // Process emergency information extracted from speech/text
-  private async handleEmergencyInfo(data: EmergencyData) {
+  private async handleEmergencyInfo(data: EmergencyData, isNewData: boolean = true) {
     console.log('🚨 Processing emergency information:', data)
     
-    // Send to database
+    if (isNewData || !this.emergencyCallId) {
+      // Create new emergency call
+      await this.createEmergencyCall(data)
+    } else {
+      // Update existing emergency call
+      await this.updateEmergencyCall(data)
+    }
+  }
+
+  // Create new emergency call in database
+  private async createEmergencyCall(data: EmergencyData) {
     try {
+      console.log('📝 Creating new emergency call in database')
       const response = await fetch('/api/emergency', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -517,12 +538,50 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
 
       if (response.ok) {
         const emergencyCall = await response.json()
+        this.emergencyCallId = emergencyCall.id
         console.log('✅ Emergency call created:', emergencyCall.id)
       } else {
         console.error('❌ Failed to create emergency call:', await response.text())
       }
     } catch (error) {
       console.error('❌ Error creating emergency call:', error)
+    }
+  }
+
+  // Update existing emergency call in database
+  private async updateEmergencyCall(data: EmergencyData) {
+    if (!this.emergencyCallId) {
+      console.warn('⚠️ No emergency call ID available for update, creating new call')
+      await this.createEmergencyCall(data)
+      return
+    }
+
+    try {
+      console.log('🔄 Updating emergency call in database, ID:', this.emergencyCallId)
+      const response = await fetch(`/api/emergency/${this.emergencyCallId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: data.type,
+          severity: data.severity,
+          description: data.description,
+          casualties: data.casualties || 0,
+          location: data.location,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          autoEscalated: data.severity === 'CRITICAL',
+          humanTakeover: data.severity === 'CRITICAL'
+        })
+      })
+
+      if (response.ok) {
+        const updatedCall = await response.json()
+        console.log('✅ Emergency call updated:', updatedCall.id)
+      } else {
+        console.error('❌ Failed to update emergency call:', await response.text())
+      }
+    } catch (error) {
+      console.error('❌ Error updating emergency call:', error)
     }
   }
 
