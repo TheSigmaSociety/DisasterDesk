@@ -43,6 +43,8 @@ export class EmergencyRealtimeAgent {
   private isListening: boolean = false
   private audioContext: AudioContext | null = null
   private currentSession: EmergencySession | null = null
+  private ttsQueue: Array<{ text: string; onAudioReceived: (audioData: ArrayBuffer) => void }> = []
+  private isTTSProcessing: boolean = false
 
   constructor(apiKey: string) {
     // Gemini 2.5 Flash Lite for data extraction and response generation
@@ -95,6 +97,22 @@ export class EmergencyRealtimeAgent {
     }
     
     try {
+      // Play opening 911 greeting immediately
+      if (onAudioReceived) {
+        const openingGreeting = "Hello this is 911, what's your emergency?"
+        console.log('📞 Playing opening 911 greeting')
+        
+        // Add opening greeting to conversation history
+        this.currentSession.conversationHistory.push({
+          timestamp: Date.now(),
+          speaker: 'dispatcher',
+          text: openingGreeting
+        })
+        
+        // Queue the opening greeting for immediate playback
+        this.queueTTSGeneration(openingGreeting, onAudioReceived)
+      }
+
       // Start speech recognition if available
       if (this.recognition && onTranscriptUpdate) {
         this.startSpeechRecognition(onEmergencyDataExtracted, onTranscriptUpdate, onError, onAudioReceived)
@@ -199,19 +217,11 @@ export class EmergencyRealtimeAgent {
       console.error('❌ Speech recognition error:', event.error)
       
       if (event.error === 'network') {
-        console.log('🌐 Network error detected, retrying in 2 seconds...')
+        console.log('🌐 Network error detected')
         if (onError) {
-          onError('Network connection issue. Speech recognition will retry automatically. You can also use the text input below.')
+          onError('Network connection issue. Speech recognition stopped. You can use the text input below.')
         }
-        setTimeout(() => {
-          if (this.isListening) {
-            try {
-              this.recognition.start()
-            } catch (error) {
-              console.error('❌ Failed to restart speech recognition:', error)
-            }
-          }
-        }, 2000)
+        this.isListening = false
       } else if (event.error === 'not-allowed') {
         console.error('❌ Microphone access denied')
         this.isListening = false
@@ -222,19 +232,11 @@ export class EmergencyRealtimeAgent {
         console.log('⏸️ No speech detected, continuing to listen...')
         // Don't stop listening for no-speech errors
       } else {
-        console.log('🔄 Attempting to restart speech recognition after error...')
+        console.log('❌ Speech recognition error:', event.error)
         if (onError) {
-          onError(`Speech recognition error: ${event.error}. Trying to recover...`)
+          onError(`Speech recognition error: ${event.error}. Please use the text input below.`)
         }
-        setTimeout(() => {
-          if (this.isListening) {
-            try {
-              this.recognition.start()
-            } catch (error) {
-              console.error('❌ Failed to restart speech recognition:', error)
-            }
-          }
-        }, 1000)
+        this.isListening = false
       }
     }
 
@@ -330,7 +332,15 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
       console.log('🤖 Gemini 2.5 Flash Lite response with context:', responseText)
       
       try {
-        const parsedResponse = JSON.parse(responseText.trim())
+        // Clean the response to remove markdown code blocks if present
+        let cleanedResponse = responseText.trim()
+        if (cleanedResponse.startsWith('```json')) {
+          cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+        } else if (cleanedResponse.startsWith('```')) {
+          cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
+        }
+        
+        const parsedResponse = JSON.parse(cleanedResponse)
         
         // Handle emergency data extraction/update
         if (parsedResponse.emergencyData && parsedResponse.emergencyData.type) {
@@ -358,7 +368,8 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
             text: parsedResponse.dispatcherResponse
           })
           
-          await this.generateSpeechResponse(parsedResponse.dispatcherResponse, onAudioReceived)
+          // Queue TTS generation to maintain order
+          this.queueTTSGeneration(parsedResponse.dispatcherResponse, onAudioReceived)
         }
         
       } catch (parseError) {
@@ -376,7 +387,8 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
             text: fallbackResponse
           })
           
-          await this.generateSpeechResponse(fallbackResponse, onAudioReceived)
+          // Queue TTS generation to maintain order
+          this.queueTTSGeneration(fallbackResponse, onAudioReceived)
         }
       }
     } catch (error) {
@@ -433,13 +445,15 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
       
       const response = await this.ttsAI.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Say in a calm, professional dispatcher voice: ${text}` }] }],
+        contents: [{ parts: [{ text: `Say in a calm, but fast, professional dispatcher voice: ${text}` }] }],
         config: {
           responseModalities: ['AUDIO'],
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: { voiceName: 'Kore' }, // Using "Kore - Firm" voice for authority
+             
             },
+            
           },
         },
       });
@@ -455,6 +469,28 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
     } catch (error) {
       console.error('❌ Error generating speech with TTS:', error)
     }
+  }
+
+  // Queue TTS generation to maintain proper order
+  private queueTTSGeneration(text: string, onAudioReceived: (audioData: ArrayBuffer) => void) {
+    this.ttsQueue.push({ text, onAudioReceived })
+    this.processTTSQueue()
+  }
+
+  // Process TTS queue in order
+  private async processTTSQueue() {
+    if (this.isTTSProcessing || this.ttsQueue.length === 0) {
+      return
+    }
+
+    this.isTTSProcessing = true
+
+    while (this.ttsQueue.length > 0) {
+      const { text, onAudioReceived } = this.ttsQueue.shift()!
+      await this.generateSpeechResponse(text, onAudioReceived)
+    }
+
+    this.isTTSProcessing = false
   }
 
   // Process emergency information extracted from speech/text
@@ -553,44 +589,27 @@ Keep the response concise and professional. Reference previous parts of the conv
     }
 
     try {
-      // The TTS API returns audio in a standard format (likely WAV)
-      // We can decode it directly using the Web Audio API
-      const audioData = await this.audioContext.decodeAudioData(audioBuffer.slice())
+      console.log('🔊 Playing TTS audio as PCM...')
+      const audioData = new Int16Array(audioBuffer)
       
-      // Play the decoded audio
+      // Create audio buffer (assuming 24kHz for consistency with Gemini TTS)
+      const buffer = this.audioContext.createBuffer(1, audioData.length, 24000)
+      const channelData = buffer.getChannelData(0)
+      
+      // Convert Int16Array to Float32Array and normalize
+      for (let i = 0; i < audioData.length; i++) {
+        channelData[i] = audioData[i] / 32768.0
+      }
+      
+      // Play the audio
       const source = this.audioContext.createBufferSource()
-      source.buffer = audioData
+      source.buffer = buffer
       source.connect(this.audioContext.destination)
       source.start()
       
-      console.log('🔊 Playing TTS audio response')
+      console.log('🔊 PCM audio playback successful')
     } catch (error) {
-      console.error('❌ Error playing TTS audio buffer:', error)
-      
-      // Fallback: try to play as raw PCM if decodeAudioData fails
-      try {
-        console.log('🔄 Attempting fallback PCM playback...')
-        const audioData = new Int16Array(audioBuffer)
-        
-        // Create audio buffer (assuming 24kHz for consistency)
-        const buffer = this.audioContext.createBuffer(1, audioData.length, 24000)
-        const channelData = buffer.getChannelData(0)
-        
-        // Convert Int16Array to Float32Array and normalize
-        for (let i = 0; i < audioData.length; i++) {
-          channelData[i] = audioData[i] / 32768.0
-        }
-        
-        // Play the audio
-        const source = this.audioContext.createBufferSource()
-        source.buffer = buffer
-        source.connect(this.audioContext.destination)
-        source.start()
-        
-        console.log('🔊 Fallback PCM audio playback successful')
-      } catch (fallbackError) {
-        console.error('❌ Fallback audio playback also failed:', fallbackError)
-      }
+      console.error('❌ Error playing PCM audio:', error)
     }
   }
 }
