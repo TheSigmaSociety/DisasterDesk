@@ -348,41 +348,24 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
 
         let parsedResponse = JSON.parse(cleanedResponse)
 
-        // Geocode for most accurate location
-        if(parsedResponse.emergencyData.latitude == null || parsedResponse.emergencyData.longitude == null) {
-          try {
-            const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(parsedResponse.emergencyData.location)}`)
-            if (geoRes.ok) {
-              const geoData = await geoRes.json()
-              if (geoData && geoData.length > 0) {
-                parsedResponse.emergencyData.latitude = parseFloat(geoData[0].lat)
-                parsedResponse.emergencyData.longitude = parseFloat(geoData[0].lon)
-
-                // use api to convert lat and long into locattion
-                if (
-                  parsedResponse.emergencyData.latitude != null &&
-                  parsedResponse.emergencyData.longitude != null
-                ) {
-                  try {
-                    const reverseGeoRes = await fetch(
-                      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${parsedResponse.emergencyData.latitude}&lon=${parsedResponse.emergencyData.longitude}`
-                    );
-                    if (reverseGeoRes.ok) {
-                      const reverseGeoData = await reverseGeoRes.json();
-                      if (reverseGeoData && reverseGeoData.display_name) {
-                        console.log("location: " + reverseGeoData.display_name);
-                        parsedResponse.emergencyData.location = reverseGeoData.display_name;
-                      }
-                    }
-                  } catch (reverseGeoError) {
-                    console.warn('⚠️ Reverse geocoding failed:', reverseGeoError);
-                  }
-                }
+        // Use browser's built-in Geolocation API to set latitude and longitude
+        if ((parsedResponse.emergencyData.latitude == null || parsedResponse.emergencyData.longitude == null) && typeof window !== 'undefined' && navigator.geolocation) {
+          await new Promise((resolve) => {
+            navigator.geolocation.getCurrentPosition(
+              (position) => {
+                parsedResponse.emergencyData.latitude = position.coords.latitude;
+                parsedResponse.emergencyData.longitude = position.coords.longitude;
+                console.log('📍 Browser geolocation:', parsedResponse.emergencyData.latitude, parsedResponse.emergencyData.longitude);
+                //now, use photon API to get location from lat long
+                parsedResponse.emergencyData.location = parsedResponse.emergencyData.latitude + " " + parsedResponse.emergencyData.longitude; //placeholder until API is integrated
+                resolve(true);
+              },
+              (error) => {
+                console.warn('⚠️ Geolocation error:', error);
+                resolve(false);
               }
-            }
-          } catch (geoError) {
-            console.warn('⚠️ Geocoding failed:', geoError)
-          }
+            );
+          });
         }
 
         // Handle emergency data extraction/update
@@ -484,35 +467,32 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
   // Generate speech response using Gemini 2.5 Flash Preview TTS
   private async generateSpeechResponse(text: string, onAudioReceived: (audioData: ArrayBuffer) => void) {
     try {
-      console.log('🎙️ Converting text to speech:', text)
-      
-      const response = await this.ttsAI.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Say in a calm, but fast, professional dispatcher voice: ${text}` }] }],
-        config: {
-          responseModalities: ['AUDIO'],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Kore' }, // Using "Kore - Firm" voice for authority
-             
-            },
-            
-          },
-        },
-      });
-
-      const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (audioData) {
-        const audioBuffer = Buffer.from(audioData, 'base64');
-        console.log('🔊 TTS audio generated successfully, size:', audioBuffer.length, 'bytes')
-        console.log('✅ AI finished processing TTS for:', text.substring(0, 50) + (text.length > 50 ? '...' : ''))
-        onAudioReceived(audioBuffer.buffer);
+      console.log('🎙️ Using browser SpeechSynthesis API for TTS:', text);
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        const utterance = new window.SpeechSynthesisUtterance(text);
+        // Optional: set voice, rate, pitch, etc.
+        // utterance.voice = speechSynthesis.getVoices().find(v => v.name === "Google US English");
+        utterance.rate = 1;
+        utterance.pitch = 1;
+        utterance.onend = () => {
+          // Simulate audio received callback (no audio buffer available)
+          if (onAudioReceived) {
+            onAudioReceived(new ArrayBuffer(0));
+          }
+        };
+        window.speechSynthesis.speak(utterance);
+        console.log('✅ SpeechSynthesis API finished speaking.');
       } else {
-        console.warn('⚠️ No audio data received from TTS model')
+        console.warn('⚠️ SpeechSynthesis API not available in this environment.');
+        if (onAudioReceived) {
+          onAudioReceived(new ArrayBuffer(0));
+        }
       }
     } catch (error) {
-      console.error('❌ Error generating speech with TTS:', error)
-      console.log('❌ AI failed to process TTS for:', text.substring(0, 50) + (text.length > 50 ? '...' : ''))
+      console.error('❌ Error using SpeechSynthesis API:', error);
+      if (onAudioReceived) {
+        onAudioReceived(new ArrayBuffer(0));
+      }
     }
   }
 
