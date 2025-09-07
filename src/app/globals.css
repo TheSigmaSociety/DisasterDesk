@@ -1,3 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Exo:ital,wght@0,100..900;1,100..900&family=Lexend+Giga:wght@100..900&family=Lora:ital,wght@0,400..700;1,400..700&family=Michroma&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.title-font {
+  font-family: 'Exo', sans-serif;
+  font-weight: 500;
+}
+
+.bg-emergency {
+  background-color: rgba(220, 38, 38, 0.8);
+}
+
+.bg-emergency:hover {
+  background-color: rgba(239, 68, 68, 0.85);
+}
+
+.bg-dispatch {
+  background-color: #374F6B;
+}
+
+.bg-dispatch:hover {
+  background-color: rgba(59, 130, 246, 0.85);
+}
