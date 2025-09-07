@@ -412,7 +412,6 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
       const response = await result.response
       const responseText = response.text()
       
-      console.log('🤖 Gemini 2.5 Flash Lite response with context:', responseText)
       
       try {
         // Clean the response to remove markdown code blocks if present
@@ -432,13 +431,11 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
               (position) => {
                 parsedResponse.emergencyData.latitude = position.coords.latitude;
                 parsedResponse.emergencyData.longitude = position.coords.longitude;
-                console.log('📍 Browser geolocation:', parsedResponse.emergencyData.latitude, parsedResponse.emergencyData.longitude);
                 //now, use photon API to get location from lat long
                 parsedResponse.emergencyData.location = parsedResponse.emergencyData.latitude + " " + parsedResponse.emergencyData.longitude; //placeholder until API is integrated
                 resolve(true);
               },
               (error) => {
-                console.warn('⚠️ Geolocation error:', error);
                 resolve(false);
               }
             );
@@ -453,13 +450,11 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
           if (this.userLocation && (!parsedResponse.emergencyData.latitude || !parsedResponse.emergencyData.longitude)) {
             parsedResponse.emergencyData.latitude = this.userLocation.latitude
             parsedResponse.emergencyData.longitude = this.userLocation.longitude
-            console.log('📍 Added GPS coordinates to emergency data:', this.userLocation)
           }
           
           const isUpdatedData = isNewData || JSON.stringify(this.currentSession.extractedData) !== JSON.stringify(parsedResponse.emergencyData)
           
           if (isUpdatedData) {
-            console.log('🚨 Emergency data ' + (isNewData ? 'extracted' : 'updated') + ':', parsedResponse.emergencyData)
             this.currentSession.extractedData = parsedResponse.emergencyData
             onEmergencyDataExtracted(parsedResponse.emergencyData)
             
@@ -468,7 +463,6 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
           }
         }        // Handle conversational response through TTS
         if (parsedResponse.dispatcherResponse && onAudioReceived) {
-          console.log('💬 Generating contextual speech response:', parsedResponse.dispatcherResponse)
 
           // Add dispatcher response to conversation history
           this.currentSession.conversationHistory.push({
@@ -482,7 +476,6 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
         }
 
       } catch (parseError) {
-        console.error('❌ Failed to parse Gemini response as JSON:', parseError)
         console.log('Raw response:', responseText)
 
         // Fallback: treat the entire response as dispatcher response
@@ -501,7 +494,6 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
         }
       }
     } catch (error) {
-      console.error('❌ Error processing text with conversation context:', error)
     }
   }
 
@@ -537,7 +529,6 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
       .join(' ')
 
     if (recentCallerMessages.trim()) {
-      console.log('🔄 Processing full conversation context...')
       await this.processEmergencyText(recentCallerMessages, onEmergencyDataExtracted, onAudioReceived)
     }
   }
@@ -557,10 +548,8 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
     return this.isGeolocationAttempted
   }
 
-  // Generate speech response using Gemini 2.5 Flash Preview TTS
   private async generateSpeechResponse(text: string, onAudioReceived: (audioData: ArrayBuffer) => void) {
     try {
-      console.log('🎙️ Using browser SpeechSynthesis API for TTS:', text);
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         const utterance = new window.SpeechSynthesisUtterance(text);
         // Optional: set voice, rate, pitch, etc.
@@ -574,15 +563,12 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
           }
         };
         window.speechSynthesis.speak(utterance);
-        console.log('✅ SpeechSynthesis API finished speaking.');
       } else {
-        console.warn('⚠️ SpeechSynthesis API not available in this environment.');
         if (onAudioReceived) {
           onAudioReceived(new ArrayBuffer(0));
         }
       }
     } catch (error) {
-      console.error('❌ Error using SpeechSynthesis API:', error);
       if (onAudioReceived) {
         onAudioReceived(new ArrayBuffer(0));
       }
@@ -601,7 +587,6 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
       return
     }
 
-    console.log('🔄 Starting TTS queue processing, items in queue:', this.ttsQueue.length)
     this.isTTSProcessing = true
 
     while (this.ttsQueue.length > 0) {
@@ -610,12 +595,10 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
     }
 
     this.isTTSProcessing = false
-    console.log('✅ TTS queue processing completed, queue is now empty')
   }
 
   // Process emergency information extracted from speech/text
   private async handleEmergencyInfo(data: EmergencyData, isNewData: boolean = true) {
-    console.log('🚨 Processing emergency information:', data)
     
     if (isNewData || !this.emergencyCallId) {
       // Create new emergency call
@@ -629,7 +612,6 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
   // Create new emergency call in database
   private async createEmergencyCall(data: EmergencyData) {
     try {
-      console.log('📝 Creating new emergency call in database')
       const response = await fetch('/api/emergency', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -649,25 +631,20 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
       if (response.ok) {
         const emergencyCall = await response.json()
         this.emergencyCallId = emergencyCall.id
-        console.log('✅ Emergency call created:', emergencyCall.id)
       } else {
-        console.error('❌ Failed to create emergency call:', await response.text())
       }
     } catch (error) {
-      console.error('❌ Error creating emergency call:', error)
     }
   }
 
   // Update existing emergency call in database
   private async updateEmergencyCall(data: EmergencyData) {
     if (!this.emergencyCallId) {
-      console.warn('⚠️ No emergency call ID available for update, creating new call')
       await this.createEmergencyCall(data)
       return
     }
 
     try {
-      console.log('🔄 Updating emergency call in database, ID:', this.emergencyCallId)
       const response = await fetch(`/api/emergency/${this.emergencyCallId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -686,12 +663,9 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
 
       if (response.ok) {
         const updatedCall = await response.json()
-        console.log('✅ Emergency call updated:', updatedCall.id)
       } else {
-        console.error('❌ Failed to update emergency call:', await response.text())
       }
     } catch (error) {
-      console.error('❌ Error updating emergency call:', error)
     }
   }
 
@@ -734,7 +708,6 @@ Keep the response concise and professional. Reference previous parts of the conv
       
       return responseText
     } catch (error) {
-      console.error('❌ Error generating response:', error)
       const fallbackResponse = "I understand this is an emergency. Please stay on the line and provide as much detail as possible about your location and the situation."
       
       // Add fallback response to conversation history
@@ -753,12 +726,10 @@ Keep the response concise and professional. Reference previous parts of the conv
   // Audio playback utility for TTS responses
   async playAudioBuffer(audioBuffer: ArrayBuffer) {
     if (!this.audioContext) {
-      console.warn('⚠️ Audio context not available')
       return
     }
 
     try {
-      console.log('🔊 Playing TTS audio as PCM...')
       const audioData = new Int16Array(audioBuffer)
       
       // Create audio buffer (assuming 24kHz for consistency with Gemini TTS)
@@ -776,9 +747,7 @@ Keep the response concise and professional. Reference previous parts of the conv
       source.connect(this.audioContext.destination)
       source.start()
       
-      console.log('🔊 PCM audio playback successful')
     } catch (error) {
-      console.error('❌ Error playing PCM audio:', error)
     }
   }
 }
