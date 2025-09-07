@@ -1,5 +1,14 @@
-// Emergency AI Agent for 911 Call Handler
-// Simplified version for hackathon demo
+// Emergency AI Agent for 911 Call Handler  
+// Using Gemini 2.5 Flash Lite for data extraction and response generation + Gemini 2.5 Flash Preview TTS for speech
+
+import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
+
+export interface ConversationTurn {
+  timestamp: number
+  speaker: 'caller' | 'dispatcher'
+  text: string
+}
 
 export interface EmergencyData {
   type: string
@@ -11,6 +20,13 @@ export interface EmergencyData {
   casualties?: number
 }
 
+export interface EmergencySession {
+  sessionId: string
+  conversationHistory: ConversationTurn[]
+  extractedData: EmergencyData | null
+  lastProcessedAt: number
+}
+
 export interface EmergencyContext {
   sessionId: string
   status: 'connecting' | 'connected' | 'disconnected'
@@ -20,79 +36,561 @@ export interface EmergencyContext {
 }
 
 export class EmergencyRealtimeAgent {
-  private apiKey: string
+  private genAI: GoogleGenerativeAI
+  private ttsAI: GoogleGenAI
+  private textModel: any
+  private recognition: any = null
+  private isListening: boolean = false
+  private audioContext: AudioContext | null = null
+  private currentSession: EmergencySession | null = null
 
   constructor(apiKey: string) {
-    this.apiKey = apiKey
-    console.log('🤖 Emergency AI Agent initialized')
+    // Gemini 2.5 Flash Lite for data extraction and response generation
+    this.genAI = new GoogleGenerativeAI(apiKey)
+    this.textModel = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+    
+    // Gemini 2.5 Flash Preview TTS for speech synthesis
+    this.ttsAI = new GoogleGenAI({ apiKey })
+    
+    console.log('🤖 Emergency AI Agent initialized with Gemini 2.5 Flash Lite + 2.5 Flash Preview TTS')
+    this.initializeSpeechRecognition()
+    this.initializeAudioContext()
   }
 
-  async startSession(onEmergencyDataExtracted: (data: EmergencyData) => void) {
+  private initializeAudioContext() {
+    if (typeof window !== 'undefined') {
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      console.log('🔊 Audio context initialized for TTS output')
+    }
+  }
+
+  private initializeSpeechRecognition() {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
+      this.recognition = new SpeechRecognition()
+      this.recognition.continuous = true
+      this.recognition.interimResults = true
+      this.recognition.lang = 'en-US'
+      console.log('🎤 Speech recognition initialized')
+    } else {
+      console.warn('⚠️ Speech recognition not supported in this browser')
+    }
+  }
+
+  async startSession(
+    onEmergencyDataExtracted: (data: EmergencyData) => void,
+    onTranscriptUpdate?: (transcript: string) => void,
+    onError?: (error: string) => void,
+    onAudioReceived?: (audioData: ArrayBuffer) => void
+  ) {
     console.log('🚀 Starting emergency call session...')
-    console.log('📞 Connecting to OpenAI Realtime API...')
     
-    // For demo purposes, return a mock session
+    // Create a session for emergency call processing with conversation history
+    const sessionId = 'session-' + Date.now()
+    this.currentSession = {
+      sessionId,
+      conversationHistory: [],
+      extractedData: null,
+      lastProcessedAt: 0
+    }
+    
+    try {
+      // Start speech recognition if available
+      if (this.recognition && onTranscriptUpdate) {
+        this.startSpeechRecognition(onEmergencyDataExtracted, onTranscriptUpdate, onError, onAudioReceived)
+      } else if (onError) {
+        onError('Speech recognition not available in this browser. You can still use the text input below.')
+      }
+    } catch (error) {
+      console.error('❌ Failed to initialize session:', error)
+      if (onError) {
+        onError('Failed to start session. Using fallback mode.')
+      }
+    }
+    
     return {
-      id: 'session-' + Date.now(),
-      status: 'connected',
+      id: sessionId,
+      status: 'connected' as const,
       disconnect: () => {
         console.log('📞 Emergency call session disconnected')
+        this.stopSpeechRecognition()
+        this.currentSession = null
       },
-      sendMessage: (text: string) => {
-        console.log('💬 Sending message:', text)
+      sendMessage: async (text: string) => {
+        console.log('💬 Processing message:', text)
+        if (onTranscriptUpdate) {
+          onTranscriptUpdate(text)
+        }
+        
+        // Add caller message to conversation history
+        if (this.currentSession) {
+          this.currentSession.conversationHistory.push({
+            timestamp: Date.now(),
+            speaker: 'caller',
+            text: text
+          })
+        }
+        
+        // Process with full conversation context
+        await this.processEmergencyText(text, onEmergencyDataExtracted, onAudioReceived)
       }
     }
   }
 
-  async createEphemeralToken(): Promise<string> {
-    console.log('🔑 Creating ephemeral token...')
-    
-    try {
-      const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-realtime-preview-2024-10-01',
-          voice: 'alloy'
-        })
-      })
+  private startSpeechRecognition(
+    onEmergencyDataExtracted: (data: EmergencyData) => void,
+    onTranscriptUpdate: (transcript: string) => void, 
+    onError?: (error: string) => void,
+    onAudioReceived?: (audioData: ArrayBuffer) => void
+  ) {
+    if (!this.recognition) {
+      console.warn('⚠️ Speech recognition not available')
+      if (onError) {
+        onError('Speech recognition not supported in this browser')
+      }
+      return
+    }
 
-      const data = await response.json()
-      console.log('✅ Token created successfully')
-      return data.client_secret.value
-    } catch (error) {
-      console.error('❌ Token creation failed:', error)
-      throw error
+    let finalTranscript = ''
+
+    this.recognition.onresult = (event: any) => {
+      let interimTranscript = ''
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + ' '
+          console.log('🎤 Final transcript chunk:', transcript)
+          
+          // Add caller message to conversation history
+          if (this.currentSession) {
+            this.currentSession.conversationHistory.push({
+              timestamp: Date.now(),
+              speaker: 'caller',
+              text: transcript.trim()
+            })
+          }
+          
+          // Process with full conversation context - but only if enough time has passed
+          // This prevents processing every small chunk and allows for natural speech pauses
+          const now = Date.now()
+          if (!this.currentSession?.lastProcessedAt || (now - this.currentSession.lastProcessedAt) > 2000) {
+            if (this.currentSession) {
+              this.currentSession.lastProcessedAt = now
+            }
+            this.processEmergencyText(transcript, onEmergencyDataExtracted, onAudioReceived)
+          }
+          
+          // Update the full transcript
+          onTranscriptUpdate(finalTranscript.trim())
+        } else {
+          interimTranscript = transcript
+        }
+      }
+      
+      // Update with interim results for real-time display
+      if (interimTranscript) {
+        console.log('🎤 Interim transcript:', interimTranscript)
+        onTranscriptUpdate((finalTranscript+interimTranscript).trim())
+      }
+    }
+
+    this.recognition.onerror = (event: any) => {
+      console.error('❌ Speech recognition error:', event.error)
+      
+      if (event.error === 'network') {
+        console.log('🌐 Network error detected, retrying in 2 seconds...')
+        if (onError) {
+          onError('Network connection issue. Speech recognition will retry automatically. You can also use the text input below.')
+        }
+        setTimeout(() => {
+          if (this.isListening) {
+            try {
+              this.recognition.start()
+            } catch (error) {
+              console.error('❌ Failed to restart speech recognition:', error)
+            }
+          }
+        }, 2000)
+      } else if (event.error === 'not-allowed') {
+        console.error('❌ Microphone access denied')
+        this.isListening = false
+        if (onError) {
+          onError('Microphone access denied. Please allow microphone access or use the text input below.')
+        }
+      } else if (event.error === 'no-speech') {
+        console.log('⏸️ No speech detected, continuing to listen...')
+        // Don't stop listening for no-speech errors
+      } else {
+        console.log('🔄 Attempting to restart speech recognition after error...')
+        if (onError) {
+          onError(`Speech recognition error: ${event.error}. Trying to recover...`)
+        }
+        setTimeout(() => {
+          if (this.isListening) {
+            try {
+              this.recognition.start()
+            } catch (error) {
+              console.error('❌ Failed to restart speech recognition:', error)
+            }
+          }
+        }, 1000)
+      }
+    }
+
+    this.recognition.onend = () => {
+      if (this.isListening) {
+        console.log('🔄 Speech recognition ended, restarting...')
+        setTimeout(() => {
+          if (this.isListening) {
+            try {
+              this.recognition.start()
+            } catch (error) {
+              console.error('❌ Failed to restart speech recognition:', error)
+            }
+          }
+        }, 100)
+      }
+    }
+
+    this.isListening = true
+    this.recognition.start()
+    console.log('🎤 Speech recognition started')
+  }
+
+  private stopSpeechRecognition() {
+    if (this.recognition && this.isListening) {
+      this.isListening = false
+      this.recognition.stop()
+      console.log('🛑 Speech recognition stopped')
     }
   }
 
-  // Process emergency information extracted from speech
+  private async processEmergencyText(
+    currentText: string, 
+    onEmergencyDataExtracted: (data: EmergencyData) => void,
+    onAudioReceived?: (audioData: ArrayBuffer) => void
+  ) {
+    if (!this.currentSession) {
+      console.warn('⚠️ No active session for processing text')
+      return
+    }
+
+    try {
+      // Build conversation context
+      const conversationContext = this.buildConversationContext()
+      const hasExistingEmergencyData = this.currentSession.extractedData !== null
+      
+      // Enhanced prompt with full conversation context
+      const prompt = `
+You are an experienced 911 emergency dispatcher AI. You are currently handling an emergency call.
+
+CONVERSATION HISTORY:
+${conversationContext}
+
+CURRENT EMERGENCY STATUS:
+${hasExistingEmergencyData ? `Already extracted: ${JSON.stringify(this.currentSession.extractedData)}` : 'No emergency data extracted yet'}
+
+CURRENT CALLER STATEMENT: "${currentText}"
+
+Based on the FULL conversation history and the current statement, you need to:
+1. ${hasExistingEmergencyData ? 'Update or maintain' : 'Extract'} emergency information as JSON
+2. Generate a professional dispatcher response that flows naturally from the conversation
+
+Please return EXACTLY this format (no additional text or markdown):
+{
+  "emergencyData": {
+    "type": "FIRE" | "MEDICAL" | "POLICE" | "NATURAL_DISASTER" | "ACCIDENT" | "OTHER",
+    "severity": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+    "description": "Brief description of the emergency based on ALL information gathered",
+    "location": "Most specific address or location mentioned in the conversation",
+    "casualties": number of people injured/affected (0 if not mentioned),
+    "latitude": latitude if extractable from location,
+    "longitude": longitude if extractable from location
+  },
+  "dispatcherResponse": "Your professional response that acknowledges what the caller just said, references previous conversation if relevant, asks follow-up questions if needed, and maintains the natural flow of the emergency call conversation."
+}
+
+IMPORTANT GUIDELINES:
+- Reference previous parts of the conversation when appropriate
+- Don't repeat questions you've already asked unless you need clarification
+- Build upon information already gathered
+- If emergency data is already complete, focus on providing reassurance and instructions
+- If the caller is providing new information, acknowledge it and ask logical follow-up questions
+- Maintain a calm, professional, and reassuring tone throughout
+- If no clear emergency information exists, set emergencyData to null but provide helpful guidance
+
+${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update it if the caller provides NEW or CORRECTING information.' : ''}
+`
+
+      const result = await this.textModel.generateContent(prompt)
+      const response = await result.response
+      const responseText = response.text()
+      
+      console.log('🤖 Gemini 2.5 Flash Lite response with context:', responseText)
+      
+      try {
+        const parsedResponse = JSON.parse(responseText.trim())
+        
+        // Handle emergency data extraction/update
+        if (parsedResponse.emergencyData && parsedResponse.emergencyData.type) {
+          const isNewData = !this.currentSession.extractedData
+          const isUpdatedData = isNewData || JSON.stringify(this.currentSession.extractedData) !== JSON.stringify(parsedResponse.emergencyData)
+          
+          if (isUpdatedData) {
+            console.log('🚨 Emergency data ' + (isNewData ? 'extracted' : 'updated') + ':', parsedResponse.emergencyData)
+            this.currentSession.extractedData = parsedResponse.emergencyData
+            onEmergencyDataExtracted(parsedResponse.emergencyData)
+            if (isNewData) {
+              await this.handleEmergencyInfo(parsedResponse.emergencyData)
+            }
+          }
+        }
+        
+        // Handle conversational response through TTS
+        if (parsedResponse.dispatcherResponse && onAudioReceived) {
+          console.log('💬 Generating contextual speech response:', parsedResponse.dispatcherResponse)
+          
+          // Add dispatcher response to conversation history
+          this.currentSession.conversationHistory.push({
+            timestamp: Date.now(),
+            speaker: 'dispatcher',
+            text: parsedResponse.dispatcherResponse
+          })
+          
+          await this.generateSpeechResponse(parsedResponse.dispatcherResponse, onAudioReceived)
+        }
+        
+      } catch (parseError) {
+        console.error('❌ Failed to parse Gemini response as JSON:', parseError)
+        console.log('Raw response:', responseText)
+        
+        // Fallback: treat the entire response as dispatcher response
+        if (onAudioReceived) {
+          const fallbackResponse = "I understand you're experiencing an emergency. Please provide me with your location and describe what's happening."
+          
+          // Add fallback response to conversation history
+          this.currentSession.conversationHistory.push({
+            timestamp: Date.now(),
+            speaker: 'dispatcher',
+            text: fallbackResponse
+          })
+          
+          await this.generateSpeechResponse(fallbackResponse, onAudioReceived)
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error processing text with conversation context:', error)
+    }
+  }
+
+  // Helper method to build conversation context string
+  private buildConversationContext(): string {
+    if (!this.currentSession || this.currentSession.conversationHistory.length === 0) {
+      return "[Start of call]"
+    }
+
+    // Get the last 10 conversation turns for context (to avoid token limits)
+    const recentHistory = this.currentSession.conversationHistory.slice(-10)
+    
+    return recentHistory
+      .map(turn => `${turn.speaker.toUpperCase()}: "${turn.text}"`)
+      .join('\n')
+  }
+
+  // Method to manually process conversation when needed (e.g., after longer pauses or explicit user input)
+  async processFullConversation(
+    onEmergencyDataExtracted: (data: EmergencyData) => void,
+    onAudioReceived?: (audioData: ArrayBuffer) => void
+  ) {
+    if (!this.currentSession) {
+      console.warn('⚠️ No active session for processing full conversation')
+      return
+    }
+
+    // Get the most recent caller statement
+    const recentCallerMessages = this.currentSession.conversationHistory
+      .filter(turn => turn.speaker === 'caller')
+      .slice(-3) // Get last 3 caller statements for context
+      .map(turn => turn.text)
+      .join(' ')
+
+    if (recentCallerMessages.trim()) {
+      console.log('🔄 Processing full conversation context...')
+      await this.processEmergencyText(recentCallerMessages, onEmergencyDataExtracted, onAudioReceived)
+    }
+  }
+
+  // Get current session state for debugging
+  getCurrentSession(): EmergencySession | null {
+    return this.currentSession
+  }
+
+  // Generate speech response using Gemini 2.5 Flash Preview TTS
+  private async generateSpeechResponse(text: string, onAudioReceived: (audioData: ArrayBuffer) => void) {
+    try {
+      console.log('🎙️ Converting text to speech:', text)
+      
+      const response = await this.ttsAI.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: `Say in a calm, professional dispatcher voice: ${text}` }] }],
+        config: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Kore' }, // Using "Kore - Firm" voice for authority
+            },
+          },
+        },
+      });
+
+      const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (audioData) {
+        const audioBuffer = Buffer.from(audioData, 'base64');
+        console.log('🔊 TTS audio generated successfully, size:', audioBuffer.length, 'bytes')
+        onAudioReceived(audioBuffer.buffer);
+      } else {
+        console.warn('⚠️ No audio data received from TTS model')
+      }
+    } catch (error) {
+      console.error('❌ Error generating speech with TTS:', error)
+    }
+  }
+
+  // Process emergency information extracted from speech/text
   private async handleEmergencyInfo(data: EmergencyData) {
     console.log('🚨 Processing emergency information:', data)
     
     // Send to database
-    const response = await fetch('/api/emergency', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: data.type,
-        severity: data.severity,
-        description: data.description,
-        casualties: data.casualties || 0,
-        location: data.location,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        autoEscalated: data.severity === 'CRITICAL',
-        humanTakeover: data.severity === 'CRITICAL'
+    try {
+      const response = await fetch('/api/emergency', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: data.type,
+          severity: data.severity,
+          description: data.description,
+          casualties: data.casualties || 0,
+          location: data.location,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          autoEscalated: data.severity === 'CRITICAL',
+          humanTakeover: data.severity === 'CRITICAL'
+        })
       })
-    })
 
-    if (response.ok) {
-      const emergencyCall = await response.json()
-      console.log('✅ Emergency call created:', emergencyCall.id)
+      if (response.ok) {
+        const emergencyCall = await response.json()
+        console.log('✅ Emergency call created:', emergencyCall.id)
+      } else {
+        console.error('❌ Failed to create emergency call:', await response.text())
+      }
+    } catch (error) {
+      console.error('❌ Error creating emergency call:', error)
+    }
+  }
+
+  // Generate emergency response suggestions (legacy method for backward compatibility with conversation context)
+  async generateResponse(transcript: string, emergencyData: EmergencyData | null): Promise<string> {
+    try {
+      const conversationContext = this.buildConversationContext()
+      
+      const prompt = `
+You are a professional 911 emergency dispatcher. Based on the following conversation context and information, provide a calm, professional response to help the caller.
+
+CONVERSATION HISTORY:
+${conversationContext}
+
+Current full transcript: "${transcript}"
+Emergency data: ${emergencyData ? JSON.stringify(emergencyData) : 'None extracted yet'}
+
+Provide a helpful, calming response that:
+1. Acknowledges the emergency and references the conversation flow
+2. Asks for clarification if needed (but don't repeat questions already asked)
+3. Provides immediate safety instructions if appropriate
+4. Reassures the caller that help is on the way
+5. Flows naturally from the previous conversation
+
+Keep the response concise and professional. Reference previous parts of the conversation when appropriate.
+`
+
+      const result = await this.textModel.generateContent(prompt)
+      const response = await result.response
+      const responseText = response.text()
+      
+      // Add this response to conversation history if we have an active session
+      if (this.currentSession) {
+        this.currentSession.conversationHistory.push({
+          timestamp: Date.now(),
+          speaker: 'dispatcher',
+          text: responseText
+        })
+      }
+      
+      return responseText
+    } catch (error) {
+      console.error('❌ Error generating response:', error)
+      const fallbackResponse = "I understand this is an emergency. Please stay on the line and provide as much detail as possible about your location and the situation."
+      
+      // Add fallback response to conversation history
+      if (this.currentSession) {
+        this.currentSession.conversationHistory.push({
+          timestamp: Date.now(),
+          speaker: 'dispatcher',
+          text: fallbackResponse
+        })
+      }
+      
+      return fallbackResponse
+    }
+  }
+
+  // Audio playback utility for TTS responses
+  async playAudioBuffer(audioBuffer: ArrayBuffer) {
+    if (!this.audioContext) {
+      console.warn('⚠️ Audio context not available')
+      return
+    }
+
+    try {
+      // The TTS API returns audio in a standard format (likely WAV)
+      // We can decode it directly using the Web Audio API
+      const audioData = await this.audioContext.decodeAudioData(audioBuffer.slice())
+      
+      // Play the decoded audio
+      const source = this.audioContext.createBufferSource()
+      source.buffer = audioData
+      source.connect(this.audioContext.destination)
+      source.start()
+      
+      console.log('🔊 Playing TTS audio response')
+    } catch (error) {
+      console.error('❌ Error playing TTS audio buffer:', error)
+      
+      // Fallback: try to play as raw PCM if decodeAudioData fails
+      try {
+        console.log('🔄 Attempting fallback PCM playback...')
+        const audioData = new Int16Array(audioBuffer)
+        
+        // Create audio buffer (assuming 24kHz for consistency)
+        const buffer = this.audioContext.createBuffer(1, audioData.length, 24000)
+        const channelData = buffer.getChannelData(0)
+        
+        // Convert Int16Array to Float32Array and normalize
+        for (let i = 0; i < audioData.length; i++) {
+          channelData[i] = audioData[i] / 32768.0
+        }
+        
+        // Play the audio
+        const source = this.audioContext.createBufferSource()
+        source.buffer = buffer
+        source.connect(this.audioContext.destination)
+        source.start()
+        
+        console.log('🔊 Fallback PCM audio playback successful')
+      } catch (fallbackError) {
+        console.error('❌ Fallback audio playback also failed:', fallbackError)
+      }
     }
   }
 }

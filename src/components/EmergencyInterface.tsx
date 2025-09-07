@@ -17,6 +17,8 @@ export default function EmergencyInterface() {
     transcript,
     emergencyData,
     error,
+    speechError,
+    isAIResponding,
     startEmergencyCall,
     sendTextMessage,
     interrupt,
@@ -47,6 +49,19 @@ export default function EmergencyInterface() {
           </p>
         </div>
 
+        {/* Speech Recognition Error Alert */}
+        {speechError && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center">
+              <AlertTriangle className="h-5 w-5 text-yellow-500 mr-2" />
+              <span className="font-semibold text-yellow-800">Speech Recognition Issue</span>
+            </div>
+            <p className="text-yellow-700 mt-1">
+              {speechError}
+            </p>
+          </div>
+        )}
+
         {/* Status Display */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -57,7 +72,16 @@ export default function EmergencyInterface() {
               {isConnected ? 'Connected' : 'Disconnected'}
             </div>
           </div>
-          <p className="text-gray-700">{status}</p>
+          <p className="text-gray-700">
+            {isConnected 
+              ? isAIResponding
+                ? "🤖 AI dispatcher is responding... Please listen."
+                : isRecording 
+                  ? "🎤 Listening for your emergency report. Please speak clearly."
+                  : "Connected to emergency services. You can speak now."
+              : "Click 'Start Emergency Call' to begin reporting your emergency."
+            }
+          </p>
         </div>
 
         {/* Location Display */}
@@ -88,8 +112,24 @@ export default function EmergencyInterface() {
             ) : (
               <div className="space-y-4">
                 <div className="text-green-600 font-semibold flex items-center justify-center">
-                  <Mic className="h-5 w-5 mr-2" />
-                  Connected - AI is listening
+                  {isAIResponding ? (
+                    <>
+                      <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse mr-2"></div>
+                      <span className="h-5 w-5 mr-2">🤖</span>
+                      AI responding - Please listen
+                    </>
+                  ) : isRecording ? (
+                    <>
+                      <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse mr-2"></div>
+                      <Mic className="h-5 w-5 mr-2" />
+                      Recording - Speak now
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="h-5 w-5 mr-2" />
+                      Connected - Ready to listen
+                    </>
+                  )}
                 </div>
                 
                 <button
@@ -146,11 +186,29 @@ export default function EmergencyInterface() {
         )}
 
         {/* Transcript */}
-        {transcript && (
+        {isConnected && (
           <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-            <h3 className="text-lg font-semibold mb-4">Call Transcript</h3>
-            <div className="bg-gray-50 p-4 rounded border-l-4 border-blue-500">
-              <p className="text-gray-700 italic">"{transcript}"</p>
+            <h3 className="text-lg font-semibold mb-4 flex items-center">
+              <Mic className="h-5 w-5 mr-2" />
+              Live Transcript
+              {isRecording && (
+                <span className="ml-2 flex items-center">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                  <span className="ml-1 text-sm text-red-600">LIVE</span>
+                </span>
+              )}
+            </h3>
+            <div className="bg-gray-50 p-4 rounded border-l-4 border-blue-500 min-h-[100px]">
+              {transcript ? (
+                <p className="text-gray-700">"{transcript}"</p>
+              ) : (
+                <p className="text-gray-400 italic">
+                  {isRecording 
+                    ? "Listening... Start speaking to see your words appear here in real-time."
+                    : "Transcript will appear here when you start speaking."
+                  }
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -170,14 +228,16 @@ export default function EmergencyInterface() {
 
         {/* Demo Controls */}
         <div className="bg-yellow-50 rounded-lg p-4 mb-6">
-          <h4 className="font-semibold text-yellow-800 mb-2">Demo Controls</h4>
+          <h4 className="font-semibold text-yellow-800 mb-2">
+            {speechError ? 'Text Input (Speech Recognition Issues)' : 'Text Input (Alternative Method)'}
+          </h4>
           <div className="space-y-2">
             <div className="flex space-x-2">
               <input
                 type="text"
                 value={testMessage}
                 onChange={(e) => setTestMessage(e.target.value)}
-                placeholder="Type a test message..."
+                placeholder={speechError ? "Describe your emergency here..." : "Type a test message..."}
                 className="flex-1 px-3 py-1 border rounded text-sm"
                 disabled={!isConnected}
               />
@@ -189,6 +249,11 @@ export default function EmergencyInterface() {
                 Send Text
               </button>
             </div>
+            {speechError && (
+              <p className="text-sm text-yellow-700">
+                💡 Since speech recognition is having issues, please type your emergency details above and click "Send Text"
+              </p>
+            )}
             <button
               onClick={() => console.log('Emergency report submitted')}
               className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm"

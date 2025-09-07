@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       callerPhone
     } = body
 
-    console.log('Creating emergency call with OpenAI Agents SDK data:', body)
+    console.log('Creating emergency call with Gemini AI data:', body)
 
     const emergencyCall = await prisma.emergencyCall.create({
       data: {

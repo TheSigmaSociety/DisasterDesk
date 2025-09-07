@@ -12,7 +12,8 @@
     "generate": "prisma generate"
   },
   "dependencies": {
-    "@openai/agents": "^0.1.0",
+    "@google/genai": "^0.3.0",
+    "@google/generative-ai": "^0.21.0",
     "@prisma/client": "^5.6.0",
     "clsx": "^2.0.0",
     "lucide-react": "^0.400.0",
