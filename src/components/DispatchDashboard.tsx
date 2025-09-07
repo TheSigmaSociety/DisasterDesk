@@ -467,9 +467,9 @@ export default function DispatchDashboard() {
                 <div className="pt-4">
                   <button
                     onClick={() => setShowResourceModal(true)}
-                    className="w-full cyber-button py-3 px-4 rounded-xl hover-lift"
+                    className="w-full cyber-button py-3 px-4 rounded-xl flex items-center justify-center"
                   >
-                    <Target className="h-5 w-5 mr-2 inline" />
+                    <Target className="h-5 w-5 mr-2" />
                     ASSIGN RESOURCES
                   </button>
                 </div>
@@ -511,7 +511,7 @@ export default function DispatchDashboard() {
               <div className="flex justify-end space-x-3">
                 <button
                   onClick={() => setShowResourceModal(false)}
-                  className="px-6 py-2 glass rounded-lg text-gray-300 hover:text-white transition-colors cyber-font"
+                  className="px-6 py-3 glass rounded-lg text-gray-300 hover:text-white transition-colors cyber-font border border-gray-600"
                 >
                   CANCEL
                 </button>

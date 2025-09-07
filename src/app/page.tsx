@@ -36,8 +36,7 @@ export default function HomePage() {
           className="object-cover opacity-20 z-0" 
           sizes="100vw"
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-black/80 via-blue-900/30 to-purple-900/40 z-10" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent z-20" />
+        <div className="absolute inset-0 bg-black/70 z-10" />
       </div>
 
       {/* Header Bar */}
@@ -70,8 +69,8 @@ export default function HomePage() {
       <div className="relative z-30 flex flex-col items-center justify-center min-h-[calc(100vh-200px)] px-6">
         {/* Hero Section */}
         <div className="text-center mb-16 w-full max-w-6xl mx-auto">
-          <h1 className="title-font text-6xl md:text-8xl lg:text-9xl font-black mb-6 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 text-glow mx-auto">
-            DISASTER<span className="text-white">DESK</span>
+          <h1 className="title-font text-6xl md:text-8xl lg:text-9xl font-black mb-6 text-cyan-400 mx-auto">
+            DISASTERDESK
           </h1>
           <div className="relative">
             <p className="text-xl md:text-2xl text-gray-300 mb-8 leading-relaxed">
@@ -107,11 +106,10 @@ export default function HomePage() {
         <div className="grid md:grid-cols-2 gap-8 w-full max-w-6xl">
           {/* Emergency Caller Card */}
           <Link href="/emergency" className="group">
-            <div className="glass-card p-8 rounded-2xl hover-lift transition-all duration-500 border-2 border-red-500/20 hover:border-red-400/50 bg-gradient-to-br from-red-500/5 to-orange-500/5">
+            <div className="glass-card p-8 rounded-2xl hover-lift transition-all duration-300 border border-red-500/50">
               <div className="flex flex-col items-center text-center space-y-6">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-red-500 rounded-full blur-xl opacity-30 group-hover:opacity-50 transition-opacity"></div>
-                  <Phone className="relative h-24 w-24 text-red-400 group-hover:scale-110 transition-transform duration-300" />
+                <div className="p-6 bg-red-500/20 rounded-full">
+                  <Phone className="h-16 w-16 text-red-400" />
                 </div>
                 
                 <div>
@@ -123,12 +121,11 @@ export default function HomePage() {
                   </p>
                 </div>
 
-                <div className="flex items-center justify-center w-full">
-                  <div className="cyber-button px-8 py-4 rounded-xl text-lg group-hover:scale-105 transition-transform">
-                    <Activity className="h-5 w-5 mr-3 inline" />
+                <div className="w-full">
+                  <button className="cyber-button w-full px-6 py-3 rounded-xl text-lg">
+                    <Activity className="h-5 w-5 mr-2 inline" />
                     REPORT EMERGENCY
-                    <ArrowRight className="h-5 w-5 ml-3 inline group-hover:translate-x-2 transition-transform" />
-                  </div>
+                  </button>
                 </div>
 
                 {/* Feature indicators */}
@@ -152,11 +149,10 @@ export default function HomePage() {
 
           {/* Dispatch Center Card */}
           <Link href="/dispatch" className="group">
-            <div className="glass-card p-8 rounded-2xl hover-lift transition-all duration-500 border-2 border-blue-500/20 hover:border-blue-400/50 bg-gradient-to-br from-blue-500/5 to-purple-500/5">
+            <div className="glass-card p-8 rounded-2xl hover-lift transition-all duration-300 border border-blue-500/50">
               <div className="flex flex-col items-center text-center space-y-6">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-blue-500 rounded-full blur-xl opacity-30 group-hover:opacity-50 transition-opacity"></div>
-                  <Users className="relative h-24 w-24 text-blue-400 group-hover:scale-110 transition-transform duration-300" />
+                <div className="p-6 bg-blue-500/20 rounded-full">
+                  <Users className="h-16 w-16 text-blue-400" />
                 </div>
                 
                 <div>
@@ -168,12 +164,11 @@ export default function HomePage() {
                   </p>
                 </div>
 
-                <div className="flex items-center justify-center w-full">
-                  <div className="cyber-button px-8 py-4 rounded-xl text-lg group-hover:scale-105 transition-transform">
-                    <Shield className="h-5 w-5 mr-3 inline" />
+                <div className="w-full">
+                  <button className="cyber-button w-full px-6 py-3 rounded-xl text-lg">
+                    <Shield className="h-5 w-5 mr-2 inline" />
                     ACCESS COMMAND
-                    <ArrowRight className="h-5 w-5 ml-3 inline group-hover:translate-x-2 transition-transform" />
-                  </div>
+                  </button>
                 </div>
 
                 {/* Feature indicators */}
