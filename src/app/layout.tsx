@@ -1,8 +1,12 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Space_Grotesk } from 'next/font/google'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] })
+const spaceGrotesk = Space_Grotesk({ 
+  subsets: ['latin'],
+  variable: '--font-space-grotesk',
+  weight: ['300', '400', '500', '600', '700']
+})
 
 export const metadata: Metadata = {
   title: 'DisasterDesk - Emergency Response System',
@@ -15,9 +19,13 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
-        <main className="min-h-screen bg-gray-50">
+    <html lang="en" className="dark">
+      <body className={`${spaceGrotesk.variable} font-sans`}>
+        {/* Cyber Grid Background */}
+        <div className="fixed inset-0 cyber-grid opacity-30 pointer-events-none"></div>
+        
+        {/* Main Content */}
+        <main className="relative min-h-screen">
           {children}
         </main>
       </body>

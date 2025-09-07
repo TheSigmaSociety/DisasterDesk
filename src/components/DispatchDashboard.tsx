@@ -10,7 +10,17 @@ import {
   Users, 
   Activity,
   Filter,
-  Plus
+  Plus,
+  Zap,
+  Shield,
+  Radio,
+  Target,
+  Gauge,
+  Signal,
+  Eye,
+  Command,
+  Database,
+  Wifi
 } from 'lucide-react'
 
 interface EmergencyCall {
@@ -43,6 +53,21 @@ export default function DispatchDashboard() {
   const [filter, setFilter] = useState('ALL')
   const [selectedCall, setSelectedCall] = useState<EmergencyCall | null>(null)
   const [showResourceModal, setShowResourceModal] = useState(false)
+  const [currentTime, setCurrentTime] = useState('')
+
+  useEffect(() => {
+    const updateTime = () => {
+      setCurrentTime(new Date().toLocaleTimeString('en-US', { 
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      }))
+    }
+    updateTime()
+    const interval = setInterval(updateTime, 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Load data on component mount
   useEffect(() => {
@@ -87,6 +112,19 @@ export default function DispatchDashboard() {
           priority: 'CRITICAL',
           autoEscalated: true,
           humanTakeover: true
+        },
+        {
+          id: '3',
+          createdAt: new Date(Date.now() - 1200000).toISOString(),
+          location: '789 Pine Rd, Industrial District',
+          emergencyType: 'POLICE',
+          severity: 'MEDIUM',
+          description: 'Break-in reported at warehouse facility',
+          casualties: 0,
+          status: 'IN_PROGRESS',
+          priority: 'MEDIUM',
+          autoEscalated: false,
+          humanTakeover: false
         }
       ])
     }
@@ -103,30 +141,52 @@ export default function DispatchDashboard() {
       console.error('Error loading resources:', error)
       // Demo data for development
       setResources([
-        { id: '1', type: 'AMBULANCE', identifier: 'Ambulance 101', status: 'AVAILABLE', location: 'Station 1' },
-        { id: '2', type: 'FIRE_TRUCK', identifier: 'Fire Truck 205', status: 'DISPATCHED', location: '456 Oak Ave' },
-        { id: '3', type: 'POLICE_CAR', identifier: 'Police Unit 42', status: 'AVAILABLE', location: 'Patrol Area 3' },
+        { id: '1', type: 'AMBULANCE', identifier: 'AMB-101', status: 'AVAILABLE', location: 'Station 1' },
+        { id: '2', type: 'FIRE_TRUCK', identifier: 'FIRE-205', status: 'DISPATCHED', location: '456 Oak Ave' },
+        { id: '3', type: 'POLICE_CAR', identifier: 'UNIT-42', status: 'AVAILABLE', location: 'Patrol Area 3' },
+        { id: '4', type: 'AMBULANCE', identifier: 'AMB-203', status: 'EN_ROUTE', location: 'Highway 101' },
+        { id: '5', type: 'FIRE_TRUCK', identifier: 'FIRE-311', status: 'AVAILABLE', location: 'Station 2' },
+        { id: '6', type: 'POLICE_CAR', identifier: 'UNIT-67', status: 'BUSY', location: '789 Pine Rd' },
       ])
     }
   }
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'CRITICAL': return 'bg-red-500 text-white'
-      case 'HIGH': return 'bg-orange-500 text-white'
-      case 'MEDIUM': return 'bg-yellow-500 text-white'
-      case 'LOW': return 'bg-green-500 text-white'
-      default: return 'bg-gray-500 text-white'
+      case 'CRITICAL': return 'status-critical'
+      case 'HIGH': return 'status-high'
+      case 'MEDIUM': return 'status-medium'
+      case 'LOW': return 'status-low'
+      default: return 'bg-gray-500'
     }
   }
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'PENDING': return 'bg-yellow-100 text-yellow-800'
-      case 'IN_PROGRESS': return 'bg-blue-100 text-blue-800'
-      case 'DISPATCHED': return 'bg-purple-100 text-purple-800'
-      case 'RESOLVED': return 'bg-green-100 text-green-800'
-      default: return 'bg-gray-100 text-gray-800'
+      case 'PENDING': return 'text-yellow-400 bg-yellow-500/20 border-yellow-500/50'
+      case 'IN_PROGRESS': return 'text-blue-400 bg-blue-500/20 border-blue-500/50'
+      case 'DISPATCHED': return 'text-purple-400 bg-purple-500/20 border-purple-500/50'
+      case 'RESOLVED': return 'text-green-400 bg-green-500/20 border-green-500/50'
+      default: return 'text-gray-400 bg-gray-500/20 border-gray-500/50'
+    }
+  }
+
+  const getResourceIcon = (type: string) => {
+    switch (type) {
+      case 'AMBULANCE': return <Users className="h-5 w-5 text-blue-400" />
+      case 'FIRE_TRUCK': return <Truck className="h-5 w-5 text-red-400" />
+      case 'POLICE_CAR': return <Shield className="h-5 w-5 text-yellow-400" />
+      default: return <Activity className="h-5 w-5 text-gray-400" />
+    }
+  }
+
+  const getResourceStatus = (status: string) => {
+    switch (status) {
+      case 'AVAILABLE': return 'text-green-400 bg-green-500/20 border-green-500/50'
+      case 'DISPATCHED': return 'text-red-400 bg-red-500/20 border-red-500/50'
+      case 'EN_ROUTE': return 'text-blue-400 bg-blue-500/20 border-blue-500/50'
+      case 'BUSY': return 'text-orange-400 bg-orange-500/20 border-orange-500/50'
+      default: return 'text-gray-400 bg-gray-500/20 border-gray-500/50'
     }
   }
 
@@ -152,79 +212,167 @@ export default function DispatchDashboard() {
     }
   }
 
+  // Statistics
+  const totalCalls = calls.length
+  const activeCalls = calls.filter(c => c.status !== 'RESOLVED').length
+  const criticalCalls = calls.filter(c => c.priority === 'CRITICAL').length
+  const availableResources = resources.filter(r => r.status === 'AVAILABLE').length
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Dispatch Center</h1>
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center px-3 py-2 bg-green-100 text-green-800 rounded-full text-sm">
-            <Activity className="h-4 w-4 mr-1" />
-            System Active
+    <div className="min-h-screen p-6 relative">
+      {/* Command Center Header */}
+      <div className="glass-card p-6 rounded-2xl mb-6 neon-border">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-6">
+            <div className="flex items-center">
+              <Command className="h-8 w-8 text-cyan-400 mr-4" />
+              <div>
+                <h1 className="title-font text-3xl font-bold text-white">COMMAND CENTER</h1>
+                <p className="text-gray-400 cyber-font">Emergency Response Coordination</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-8">
+            <div className="text-right">
+              <div className="cyber-font text-2xl text-cyan-400">{currentTime}</div>
+              <div className="text-sm text-gray-400">SYSTEM TIME</div>
+            </div>
+            
+            <div className="flex items-center">
+              <div className="w-4 h-4 bg-green-400 rounded-full animate-pulse mr-3"></div>
+              <div className="text-right">
+                <div className="cyber-font text-green-400 text-lg">OPERATIONAL</div>
+                <div className="text-sm text-gray-400">ALL SYSTEMS</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Emergency Calls List */}
+      {/* Statistics Dashboard */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
+        <div className="glass-card p-6 rounded-xl hover-lift">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="cyber-font text-3xl font-bold text-cyan-400">{totalCalls}</div>
+              <div className="text-sm text-gray-400">TOTAL CALLS</div>
+            </div>
+            <Database className="h-8 w-8 text-cyan-400 opacity-60" />
+          </div>
+        </div>
+        
+        <div className="glass-card p-6 rounded-xl hover-lift">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="cyber-font text-3xl font-bold text-yellow-400">{activeCalls}</div>
+              <div className="text-sm text-gray-400">ACTIVE</div>
+            </div>
+            <Activity className="h-8 w-8 text-yellow-400 opacity-60" />
+          </div>
+        </div>
+        
+        <div className="glass-card p-6 rounded-xl hover-lift">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="cyber-font text-3xl font-bold text-red-400">{criticalCalls}</div>
+              <div className="text-sm text-gray-400">CRITICAL</div>
+            </div>
+            <AlertTriangle className="h-8 w-8 text-red-400 opacity-60" />
+          </div>
+        </div>
+        
+        <div className="glass-card p-6 rounded-xl hover-lift">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="cyber-font text-3xl font-bold text-green-400">{availableResources}</div>
+              <div className="text-sm text-gray-400">AVAILABLE</div>
+            </div>
+            <Shield className="h-8 w-8 text-green-400 opacity-60" />
+          </div>
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Emergency Calls Panel */}
         <div className="lg:col-span-2">
-          <div className="bg-white rounded-lg shadow-lg">
-            <div className="p-6 border-b">
+          <div className="glass-card rounded-2xl overflow-hidden">
+            <div className="p-6 border-b border-gray-700">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Emergency Calls</h2>
-                <div className="flex items-center space-x-2">
-                  <Filter className="h-4 w-4 text-gray-500" />
+                <div className="flex items-center">
+                  <Radio className="h-6 w-6 text-red-400 mr-3" />
+                  <h2 className="cyber-font text-xl font-bold text-white">EMERGENCY CALLS</h2>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <Filter className="h-5 w-5 text-gray-400" />
                   <select 
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
-                    className="border rounded px-2 py-1 text-sm"
+                    className="glass border border-gray-600 rounded-lg px-3 py-2 text-white cyber-font text-sm focus:border-cyan-400 focus:outline-none"
                   >
-                    <option value="ALL">All Calls</option>
-                    <option value="CRITICAL">Critical</option>
-                    <option value="HIGH">High Priority</option>
-                    <option value="PENDING">Pending</option>
-                    <option value="DISPATCHED">Dispatched</option>
+                    <option value="ALL">ALL CALLS</option>
+                    <option value="CRITICAL">CRITICAL</option>
+                    <option value="HIGH">HIGH PRIORITY</option>
+                    <option value="PENDING">PENDING</option>
+                    <option value="DISPATCHED">DISPATCHED</option>
                   </select>
                 </div>
               </div>
             </div>
 
-            <div className="max-h-96 overflow-y-auto">
+            <div className="max-h-[600px] overflow-y-auto">
               {filteredCalls.map((call) => (
                 <div 
                   key={call.id}
-                  className={`p-4 border-b hover:bg-gray-50 cursor-pointer ${
-                    selectedCall?.id === call.id ? 'bg-blue-50' : ''
+                  className={`p-6 border-b border-gray-800 hover:bg-gray-800/30 cursor-pointer transition-all ${
+                    selectedCall?.id === call.id ? 'bg-cyan-500/10 border-l-4 border-l-cyan-400' : ''
                   }`}
                   onClick={() => setSelectedCall(call)}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <span className={`px-2 py-1 rounded text-xs font-semibold ${getPriorityColor(call.priority)}`}>
+                      <div className="flex items-center space-x-3 mb-3">
+                        <span className={`px-3 py-1 rounded-lg text-xs font-bold cyber-font ${getPriorityColor(call.priority)} text-white`}>
                           {call.priority}
                         </span>
-                        <span className={`px-2 py-1 rounded text-xs ${getStatusColor(call.status)}`}>
+                        <span className={`px-3 py-1 rounded-lg text-xs border cyber-font ${getStatusColor(call.status)}`}>
                           {call.status}
                         </span>
                         {call.autoEscalated && (
-                          <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs">
+                          <span className="px-3 py-1 bg-orange-500/20 text-orange-400 rounded-lg text-xs border border-orange-500/50 cyber-font">
                             AUTO-ESCALATED
                           </span>
                         )}
+                        {call.humanTakeover && (
+                          <span className="px-3 py-1 bg-red-500/20 text-red-400 rounded-lg text-xs border border-red-500/50 cyber-font">
+                            HUMAN TAKEOVER
+                          </span>
+                        )}
                       </div>
-                      <div className="text-sm text-gray-600 mb-1">
-                        {call.emergencyType} • {call.casualties > 0 ? `${call.casualties} casualties` : 'No casualties'}
+                      
+                      <div className="mb-3">
+                        <div className="cyber-font text-white text-lg mb-1">{call.emergencyType}</div>
+                        <div className="text-gray-400 text-sm">
+                          {call.casualties > 0 ? `${call.casualties} casualties reported` : 'No casualties reported'}
+                        </div>
                       </div>
-                      <div className="flex items-center text-sm text-gray-500 mb-2">
-                        <MapPin className="h-4 w-4 mr-1" />
+                      
+                      <div className="flex items-center text-gray-400 text-sm mb-2">
+                        <MapPin className="h-4 w-4 mr-2 text-green-400" />
                         {call.location}
                       </div>
-                      <p className="text-sm text-gray-700">{call.description}</p>
+                      
+                      <p className="text-gray-300 text-sm leading-relaxed">{call.description}</p>
                     </div>
-                    <div className="text-xs text-gray-500 ml-4">
-                      <Clock className="h-3 w-3 inline mr-1" />
-                      {new Date(call.createdAt).toLocaleTimeString()}
+                    
+                    <div className="text-right ml-6">
+                      <div className="flex items-center text-gray-400 text-sm mb-2">
+                        <Clock className="h-4 w-4 mr-1" />
+                        {new Date(call.createdAt).toLocaleTimeString()}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        ID: {call.id}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -233,37 +381,37 @@ export default function DispatchDashboard() {
           </div>
         </div>
 
-        {/* Sidebar */}
+        {/* Right Sidebar */}
         <div className="space-y-6">
           {/* Resources Panel */}
-          <div className="bg-white rounded-lg shadow-lg">
-            <div className="p-6 border-b">
+          <div className="glass-card rounded-2xl overflow-hidden">
+            <div className="p-6 border-b border-gray-700">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Available Resources</h3>
-                <button className="text-blue-600 hover:text-blue-800">
+                <div className="flex items-center">
+                  <Truck className="h-6 w-6 text-blue-400 mr-3" />
+                  <h3 className="cyber-font text-lg font-bold text-white">RESOURCES</h3>
+                </div>
+                <button className="text-blue-400 hover:text-blue-300 transition-colors">
                   <Plus className="h-5 w-5" />
                 </button>
               </div>
             </div>
-            <div className="p-4">
+            
+            <div className="max-h-[300px] overflow-y-auto">
               {resources.map((resource) => (
-                <div key={resource.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
-                  <div>
+                <div key={resource.id} className="p-4 border-b border-gray-800 hover:bg-gray-800/30 transition-colors">
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center">
-                      {resource.type === 'AMBULANCE' && <Users className="h-4 w-4 mr-2 text-blue-500" />}
-                      {resource.type === 'FIRE_TRUCK' && <Truck className="h-4 w-4 mr-2 text-red-500" />}
-                      {resource.type === 'POLICE_CAR' && <AlertTriangle className="h-4 w-4 mr-2 text-yellow-500" />}
-                      <span className="text-sm font-medium">{resource.identifier}</span>
+                      {getResourceIcon(resource.type)}
+                      <div className="ml-3">
+                        <div className="cyber-font text-white text-sm">{resource.identifier}</div>
+                        <div className="text-xs text-gray-400">{resource.location}</div>
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500">{resource.location}</div>
+                    <span className={`px-2 py-1 rounded text-xs border cyber-font ${getResourceStatus(resource.status)}`}>
+                      {resource.status}
+                    </span>
                   </div>
-                  <span className={`px-2 py-1 rounded text-xs ${
-                    resource.status === 'AVAILABLE' ? 'bg-green-100 text-green-800' : 
-                    resource.status === 'DISPATCHED' ? 'bg-red-100 text-red-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {resource.status}
-                  </span>
                 </div>
               ))}
             </div>
@@ -271,47 +419,58 @@ export default function DispatchDashboard() {
 
           {/* Call Details Panel */}
           {selectedCall && (
-            <div className="bg-white rounded-lg shadow-lg">
-              <div className="p-6 border-b">
-                <h3 className="text-lg font-semibold">Call Details</h3>
+            <div className="glass-card rounded-2xl">
+              <div className="p-6 border-b border-gray-700">
+                <div className="flex items-center">
+                  <Eye className="h-6 w-6 text-purple-400 mr-3" />
+                  <h3 className="cyber-font text-lg font-bold text-white">CALL DETAILS</h3>
+                </div>
               </div>
-              <div className="p-4 space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-600">Emergency Type</label>
-                  <p className="text-gray-900">{selectedCall.emergencyType}</p>
+              
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm text-gray-400 mb-1">TYPE</div>
+                    <div className="cyber-font text-white">{selectedCall.emergencyType}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-400 mb-1">SEVERITY</div>
+                    <div className={`cyber-font font-bold ${
+                      selectedCall.severity === 'CRITICAL' ? 'text-red-400' :
+                      selectedCall.severity === 'HIGH' ? 'text-orange-400' :
+                      selectedCall.severity === 'MEDIUM' ? 'text-yellow-400' : 'text-green-400'
+                    }`}>
+                      {selectedCall.severity}
+                    </div>
+                  </div>
                 </div>
+                
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Severity</label>
-                  <p className={`font-semibold ${
-                    selectedCall.severity === 'CRITICAL' ? 'text-red-600' :
-                    selectedCall.severity === 'HIGH' ? 'text-orange-600' :
-                    selectedCall.severity === 'MEDIUM' ? 'text-yellow-600' : 'text-green-600'
-                  }`}>
-                    {selectedCall.severity}
-                  </p>
+                  <div className="text-sm text-gray-400 mb-1">LOCATION</div>
+                  <div className="text-white text-sm">{selectedCall.location}</div>
                 </div>
+                
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Location</label>
-                  <p className="text-gray-900">{selectedCall.location}</p>
+                  <div className="text-sm text-gray-400 mb-1">DESCRIPTION</div>
+                  <div className="text-white text-sm leading-relaxed">{selectedCall.description}</div>
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-600">Description</label>
-                  <p className="text-gray-900">{selectedCall.description}</p>
-                </div>
+                
                 {selectedCall.transcript && (
                   <div>
-                    <label className="text-sm font-medium text-gray-600">Transcript</label>
-                    <div className="bg-gray-50 p-3 rounded text-sm text-gray-700">
+                    <div className="text-sm text-gray-400 mb-1">TRANSCRIPT</div>
+                    <div className="glass p-3 rounded-lg text-sm text-gray-300">
                       "{selectedCall.transcript}"
                     </div>
                   </div>
                 )}
+                
                 <div className="pt-4">
                   <button
                     onClick={() => setShowResourceModal(true)}
-                    className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded font-medium"
+                    className="w-full cyber-button py-3 px-4 rounded-xl hover-lift"
                   >
-                    Assign Resources
+                    <Target className="h-5 w-5 mr-2 inline" />
+                    ASSIGN RESOURCES
                   </button>
                 </div>
               </div>
@@ -322,35 +481,39 @@ export default function DispatchDashboard() {
 
       {/* Resource Assignment Modal */}
       {showResourceModal && selectedCall && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+          <div className="glass-card rounded-2xl max-w-md w-full neon-border">
             <div className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Assign Resources</h3>
-              <div className="space-y-3">
+              <div className="flex items-center mb-6">
+                <Target className="h-6 w-6 text-cyan-400 mr-3" />
+                <h3 className="cyber-font text-xl font-bold text-white">ASSIGN RESOURCES</h3>
+              </div>
+              
+              <div className="space-y-3 mb-6">
                 {resources.filter(r => r.status === 'AVAILABLE').map((resource) => (
                   <button
                     key={resource.id}
                     onClick={() => assignResource(selectedCall.id, resource.id)}
-                    className="w-full text-left p-3 border rounded hover:bg-gray-50"
+                    className="w-full text-left p-4 glass rounded-xl hover:bg-gray-700/50 transition-all border border-gray-600 hover:border-cyan-400"
                   >
                     <div className="flex items-center">
-                      {resource.type === 'AMBULANCE' && <Users className="h-4 w-4 mr-2 text-blue-500" />}
-                      {resource.type === 'FIRE_TRUCK' && <Truck className="h-4 w-4 mr-2 text-red-500" />}
-                      {resource.type === 'POLICE_CAR' && <AlertTriangle className="h-4 w-4 mr-2 text-yellow-500" />}
-                      <div>
-                        <div className="font-medium">{resource.identifier}</div>
-                        <div className="text-sm text-gray-500">{resource.location}</div>
+                      {getResourceIcon(resource.type)}
+                      <div className="ml-3 flex-1">
+                        <div className="cyber-font text-white">{resource.identifier}</div>
+                        <div className="text-sm text-gray-400">{resource.location}</div>
                       </div>
+                      <div className="text-green-400 text-sm cyber-font">AVAILABLE</div>
                     </div>
                   </button>
                 ))}
               </div>
-              <div className="flex justify-end mt-6 space-x-2">
+              
+              <div className="flex justify-end space-x-3">
                 <button
                   onClick={() => setShowResourceModal(false)}
-                  className="px-4 py-2 border rounded text-gray-600 hover:bg-gray-50"
+                  className="px-6 py-2 glass rounded-lg text-gray-300 hover:text-white transition-colors cyber-font"
                 >
-                  Cancel
+                  CANCEL
                 </button>
               </div>
             </div>
