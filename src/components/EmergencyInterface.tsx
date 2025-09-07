@@ -187,20 +187,20 @@ export default function EmergencyInterface() {
             </div>
 
             {/* Call Controls */}
-            <div className="flex justify-center space-x-4">
+            <div className="flex flex-col items-center space-y-4">
               {!isConnected ? (
                 <button
                   onClick={startEmergencyCall}
-                  className="cyber-button px-8 py-4 rounded-xl text-lg hover-lift flex items-center"
+                  className="cyber-button px-8 py-4 rounded-xl text-lg flex items-center"
                 >
                   <Phone className="h-6 w-6 mr-3" />
                   INITIATE EMERGENCY CALL
                 </button>
               ) : (
-                <div className="flex space-x-4">
+                <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
                   <button
                     onClick={interrupt}
-                    className="px-6 py-3 rounded-xl bg-yellow-500/20 border border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/30 transition-all cyber-font flex items-center"
+                    className="flex-1 px-6 py-3 rounded-xl bg-yellow-500/20 border border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/30 transition-all cyber-font flex items-center justify-center"
                   >
                     <MicOff className="h-5 w-5 mr-2" />
                     INTERRUPT AI
@@ -208,7 +208,7 @@ export default function EmergencyInterface() {
                   
                   <button
                     onClick={endCall}
-                    className="px-6 py-3 rounded-xl bg-red-500/20 border border-red-500/50 text-red-400 hover:bg-red-500/30 transition-all cyber-font flex items-center"
+                    className="flex-1 px-6 py-3 rounded-xl bg-red-500/20 border border-red-500/50 text-red-400 hover:bg-red-500/30 transition-all cyber-font flex items-center justify-center"
                   >
                     <PhoneOff className="h-5 w-5 mr-2" />
                     END CALL
@@ -270,7 +270,7 @@ export default function EmergencyInterface() {
             </div>
             
             <div className="space-y-4">
-              <div className="flex space-x-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <input
                   type="text"
                   value={testMessage}
@@ -283,9 +283,10 @@ export default function EmergencyInterface() {
                 <button
                   onClick={handleSendTestMessage}
                   disabled={!isConnected || !testMessage.trim()}
-                  className="cyber-button px-6 py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="cyber-button px-6 py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
-                  <Send className="h-5 w-5" />
+                  <Send className="h-5 w-5 mr-2" />
+                  SEND
                 </button>
               </div>
               
