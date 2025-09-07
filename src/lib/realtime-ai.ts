@@ -345,54 +345,91 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
         } else if (cleanedResponse.startsWith('```')) {
           cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
         }
-        
-        const parsedResponse = JSON.parse(cleanedResponse)
-        
+
+        let parsedResponse = JSON.parse(cleanedResponse)
+
+        // Geocode for most accurate location
+        if(parsedResponse.emergencyData.latitude == null || parsedResponse.emergencyData.longitude == null) {
+          try {
+            const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(parsedResponse.emergencyData.location)}`)
+            if (geoRes.ok) {
+              const geoData = await geoRes.json()
+              if (geoData && geoData.length > 0) {
+                parsedResponse.emergencyData.latitude = parseFloat(geoData[0].lat)
+                parsedResponse.emergencyData.longitude = parseFloat(geoData[0].lon)
+
+                // use api to convert lat and long into locattion
+                if (
+                  parsedResponse.emergencyData.latitude != null &&
+                  parsedResponse.emergencyData.longitude != null
+                ) {
+                  try {
+                    const reverseGeoRes = await fetch(
+                      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${parsedResponse.emergencyData.latitude}&lon=${parsedResponse.emergencyData.longitude}`
+                    );
+                    if (reverseGeoRes.ok) {
+                      const reverseGeoData = await reverseGeoRes.json();
+                      if (reverseGeoData && reverseGeoData.display_name) {
+                        console.log("location: " + reverseGeoData.display_name);
+                        parsedResponse.emergencyData.location = reverseGeoData.display_name;
+                      }
+                    }
+                  } catch (reverseGeoError) {
+                    console.warn('⚠️ Reverse geocoding failed:', reverseGeoError);
+                  }
+                }
+              }
+            }
+          } catch (geoError) {
+            console.warn('⚠️ Geocoding failed:', geoError)
+          }
+        }
+
         // Handle emergency data extraction/update
         if (parsedResponse.emergencyData && parsedResponse.emergencyData.type) {
           const isNewData = !this.currentSession.extractedData
           const isUpdatedData = isNewData || JSON.stringify(this.currentSession.extractedData) !== JSON.stringify(parsedResponse.emergencyData)
-          
+
           if (isUpdatedData) {
             console.log('🚨 Emergency data ' + (isNewData ? 'extracted' : 'updated') + ':', parsedResponse.emergencyData)
             this.currentSession.extractedData = parsedResponse.emergencyData
             onEmergencyDataExtracted(parsedResponse.emergencyData)
-            
+
             // Always update database when emergency data changes
             await this.handleEmergencyInfo(parsedResponse.emergencyData, isNewData)
           }
         }
-        
+
         // Handle conversational response through TTS
         if (parsedResponse.dispatcherResponse && onAudioReceived) {
           console.log('💬 Generating contextual speech response:', parsedResponse.dispatcherResponse)
-          
+
           // Add dispatcher response to conversation history
           this.currentSession.conversationHistory.push({
             timestamp: Date.now(),
             speaker: 'dispatcher',
             text: parsedResponse.dispatcherResponse
           })
-          
+
           // Queue TTS generation to maintain order
           this.queueTTSGeneration(parsedResponse.dispatcherResponse, onAudioReceived)
         }
-        
+
       } catch (parseError) {
         console.error('❌ Failed to parse Gemini response as JSON:', parseError)
         console.log('Raw response:', responseText)
-        
+
         // Fallback: treat the entire response as dispatcher response
         if (onAudioReceived) {
           const fallbackResponse = "I understand you're experiencing an emergency. Please provide me with your location and describe what's happening."
-          
+
           // Add fallback response to conversation history
           this.currentSession.conversationHistory.push({
             timestamp: Date.now(),
             speaker: 'dispatcher',
             text: fallbackResponse
           })
-          
+
           // Queue TTS generation to maintain order
           this.queueTTSGeneration(fallbackResponse, onAudioReceived)
         }

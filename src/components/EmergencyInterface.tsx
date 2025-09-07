@@ -26,7 +26,6 @@ export default function EmergencyInterface() {
   } = useEmergencyCall()
 
   const [testMessage, setTestMessage] = useState('')
-
   // For demo: send a test message
   const handleSendTestMessage = () => {
     if (testMessage.trim()) {
