@@ -46,6 +46,8 @@ export class EmergencyRealtimeAgent {
   private ttsQueue: Array<{ text: string; onAudioReceived: (audioData: ArrayBuffer) => void }> = []
   private isTTSProcessing: boolean = false
   private emergencyCallId: string | null = null
+  private userLocation: { latitude: number; longitude: number; accuracy: number } | null = null
+  private isGeolocationAttempted: boolean = false
 
   constructor(apiKey: string) {
     // Gemini 2.5 Flash Lite for data extraction and response generation
@@ -80,6 +82,58 @@ export class EmergencyRealtimeAgent {
     }
   }
 
+  // Get user's location via browser geolocation API
+  private async getUserLocation(): Promise<{ latitude: number; longitude: number; accuracy: number } | null> {
+    if (this.isGeolocationAttempted) {
+      return this.userLocation
+    }
+
+    this.isGeolocationAttempted = true
+
+    if (!navigator.geolocation) {
+      console.warn('⚠️ Geolocation is not supported by this browser')
+      return null
+    }
+
+    try {
+      console.log('📍 Attempting to get user location...')
+      
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          resolve,
+          reject,
+          {
+            enableHighAccuracy: true,
+            timeout: 10000, // 10 seconds timeout
+            maximumAge: 300000 // 5 minutes cache
+          }
+        )
+      })
+
+      this.userLocation = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy
+      }
+
+      console.log('✅ User location obtained:', this.userLocation)
+      return this.userLocation
+
+    } catch (error: any) {
+      console.warn('⚠️ Failed to get user location:', error.message)
+      
+      if (error.code === error.PERMISSION_DENIED) {
+        console.log('📍 Geolocation permission denied by user')
+      } else if (error.code === error.POSITION_UNAVAILABLE) {
+        console.log('📍 Geolocation position unavailable')
+      } else if (error.code === error.TIMEOUT) {
+        console.log('📍 Geolocation request timed out')
+      }
+
+      return null
+    }
+  }
+
   async startSession(
     onEmergencyDataExtracted: (data: EmergencyData) => void,
     onTranscriptUpdate?: (transcript: string) => void,
@@ -100,7 +154,14 @@ export class EmergencyRealtimeAgent {
     // Reset emergency call ID for new session
     this.emergencyCallId = null
     
+    // Reset geolocation state for new session
+    this.userLocation = null
+    this.isGeolocationAttempted = false
+    
     try {
+      // Attempt to get user's location first
+      await this.getUserLocation()
+      
       // Play opening 911 greeting immediately
       if (onAudioReceived) {
         const openingGreeting = "Hello this is 911, what's your emergency?"
@@ -287,9 +348,16 @@ export class EmergencyRealtimeAgent {
       const conversationContext = this.buildConversationContext()
       const hasExistingEmergencyData = this.currentSession.extractedData !== null
       
+      // Get current location info
+      const locationInfo = this.userLocation 
+        ? `CALLER'S CURRENT LOCATION (from GPS): Latitude: ${this.userLocation.latitude}, Longitude: ${this.userLocation.longitude}, Accuracy: ${this.userLocation.accuracy} meters`
+        : 'CALLER LOCATION: GPS location not available - must ask caller for specific address or location'
+      
       // Enhanced prompt with full conversation context
       const prompt = `
 You are an experienced 911 emergency dispatcher AI. You are currently handling an emergency call.
+
+${locationInfo}
 
 CONVERSATION HISTORY:
 ${conversationContext}
@@ -309,13 +377,22 @@ Please return EXACTLY this format (no additional text or markdown):
     "type": "FIRE" | "MEDICAL" | "POLICE" | "NATURAL_DISASTER" | "ACCIDENT" | "OTHER",
     "severity": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
     "description": "Brief description of the emergency based on ALL information gathered",
-    "location": "Most specific address or location mentioned in the conversation",
+    "location": "${this.userLocation ? 'Use GPS coordinates and any specific location details from conversation' : 'Specific address or location mentioned by caller'}",
     "casualties": number of people injured/affected (0 if not mentioned),
-    "latitude": latitude if extractable from location,
-    "longitude": longitude if extractable from location
+    "latitude": ${this.userLocation ? this.userLocation.latitude : 'null (ask caller for location if not provided)'},
+    "longitude": ${this.userLocation ? this.userLocation.longitude : 'null (ask caller for location if not provided)'}
   },
   "dispatcherResponse": "Your professional response that references previous conversation if relevant, asks follow-up questions if needed, and maintains the natural flow of the emergency call conversation."
 }
+
+LOCATION HANDLING INSTRUCTIONS:
+${this.userLocation 
+  ? `- GPS location is available (${this.userLocation.latitude}, ${this.userLocation.longitude})
+     - Ask caller to confirm the specific address, building name, or exact location details
+     - Do NOT ask "where are you?" - instead ask "what's the specific address or location?"` 
+  : `- GPS location is NOT available
+     - You MUST ask the caller for their specific location/address
+     - This is CRITICAL for emergency response`}
 
 IMPORTANT GUIDELINES:
 - Don't repeat questions you've already asked unless you need clarification
@@ -371,19 +448,25 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
         // Handle emergency data extraction/update
         if (parsedResponse.emergencyData && parsedResponse.emergencyData.type) {
           const isNewData = !this.currentSession.extractedData
+          
+          // Ensure GPS coordinates are included if available
+          if (this.userLocation && (!parsedResponse.emergencyData.latitude || !parsedResponse.emergencyData.longitude)) {
+            parsedResponse.emergencyData.latitude = this.userLocation.latitude
+            parsedResponse.emergencyData.longitude = this.userLocation.longitude
+            console.log('📍 Added GPS coordinates to emergency data:', this.userLocation)
+          }
+          
           const isUpdatedData = isNewData || JSON.stringify(this.currentSession.extractedData) !== JSON.stringify(parsedResponse.emergencyData)
-
+          
           if (isUpdatedData) {
             console.log('🚨 Emergency data ' + (isNewData ? 'extracted' : 'updated') + ':', parsedResponse.emergencyData)
             this.currentSession.extractedData = parsedResponse.emergencyData
             onEmergencyDataExtracted(parsedResponse.emergencyData)
-
+            
             // Always update database when emergency data changes
             await this.handleEmergencyInfo(parsedResponse.emergencyData, isNewData)
           }
-        }
-
-        // Handle conversational response through TTS
+        }        // Handle conversational response through TTS
         if (parsedResponse.dispatcherResponse && onAudioReceived) {
           console.log('💬 Generating contextual speech response:', parsedResponse.dispatcherResponse)
 
@@ -462,6 +545,16 @@ ${hasExistingEmergencyData ? 'Note: Emergency data already exists. Only update i
   // Get current session state for debugging
   getCurrentSession(): EmergencySession | null {
     return this.currentSession
+  }
+
+  // Get current location state for debugging
+  getCurrentLocation(): { latitude: number; longitude: number; accuracy: number } | null {
+    return this.userLocation
+  }
+
+  // Check if geolocation was attempted
+  wasGeolocationAttempted(): boolean {
+    return this.isGeolocationAttempted
   }
 
   // Generate speech response using Gemini 2.5 Flash Preview TTS
